@@ -1,0 +1,4 @@
+# StreamingCatalog weekly sync
+# Runs every Sunday at 3 AM
+# Edit paths to match your installation
+0 3 * * 0 cd /path/to/streaming-catalog && streaming-catalog sync --collect-first >> /tmp/streaming-catalog.log 2>&1

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Video Library</title>
+<style>
+ :root { color-scheme: light dark; }
+ body { font-family: system-ui, -apple-system, sans-serif; max-width: 1200px; margin: 1em auto; padding: 0 1em; }
+ header { display: flex; gap: 1em; align-items: baseline; flex-wrap: wrap; }
+ h1 { margin: 0; }
+ .stats { color: #888; font-size: 0.9em; }
+ form { display: flex; gap: .5em; margin: 1em 0; flex-wrap: wrap; align-items: center; }
+ input[type=text] { flex: 1 1 320px; padding: .6em; font-size: 1em; border-radius: 6px; border: 1px solid #888; }
+ label { font-size: .9em; }
+ select, button { padding: .5em; font-size: 1em; border-radius: 6px; border: 1px solid #888; background: transparent; color: inherit; }
+ button { cursor: pointer; }
+ table { width: 100%; border-collapse: collapse; }
+ th, td { text-align: left; padding: .5em .75em; border-bottom: 1px solid #888; vertical-align: top; }
+ th { background: rgba(128,128,128,.1); }
+ .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: .75em; margin-right: 4px; text-decoration: none; }
+ a.badge:hover { opacity: 0.8; }
+ .vudu { background: #2962ff; color: white; }
+ .ma { background: #6a1b9a; color: white; }
+ .quality { background: #2e7d32; color: white; }
+ .type-tv { background: #ef6c00; color: white; }
+ .revoked-row { opacity: 0.55; }
+ .revoked-badge { background: #c62828; color: white; }
+ .poster { width: 50px; border-radius: 4px; }
+ .desc { color: #666; font-size: .85em; max-width: 360px; }
+ .empty { text-align: center; padding: 2em; color: #888; }
+ th a { color: inherit; text-decoration: none; white-space: nowrap; }
+ th a:hover { text-decoration: underline; }
+ .sort-arrow { font-size: .75em; margin-left: 2px; }
+</style>
+</head>
+<body>
+<header>
+ <h1>Video Library</h1>
+ <span class="stats">{{ stats.total }} videos · {{ stats.both }} on both services · {{ stats.active }} ownership records · {{ stats.revoked }} revoked</span>
+</header>
+<form>
+ <input type="text" name="q" placeholder="Search title, description, director, genre..." value="{{ q }}" autofocus>
+ <label><input type="checkbox" name="show_revoked" {% if show_revoked %}checked{% endif %} value="1"> Show revoked</label>
+ <select name="type">
+  <option value="">All types</option>
+  <option value="movie" {% if type_filter=='movie' %}selected{% endif %}>Movies</option>
+  <option value="tv_series" {% if type_filter=='tv_series' %}selected{% endif %}>TV Series</option>
+ </select>
+ <select name="source">
+  <option value="">All sources</option>
+  <option value="vudu" {% if source_filter=='vudu' %}selected{% endif %}>Vudu only</option>
+  <option value="movies_anywhere" {% if source_filter=='movies_anywhere' %}selected{% endif %}>Movies Anywhere only</option>
+  <option value="both" {% if source_filter=='both' %}selected{% endif %}>On both</option>
+ </select>
+ <select name="quality">
+  <option value="">Any quality</option>
+  <option value="4K UHD" {% if quality=='4K UHD' %}selected{% endif %}>4K UHD</option>
+  <option value="HD" {% if quality=='HD' %}selected{% endif %}>HD</option>
+  <option value="SD" {% if quality=='SD' %}selected{% endif %}>SD</option>
+ </select>
+ <button type="submit">Search</button>
+</form>
+
+{% if videos %}
+<table>
+ <tr>
+  <th></th>
+  <th><a href="?{{ sort_qs('title') }}">Title{{ sort_arrow('title') }}</a></th>
+  <th><a href="?{{ sort_qs('year') }}">Year{{ sort_arrow('year') }}</a></th>
+  <th>Quality</th>
+  <th>Sources</th>
+  <th><a href="?{{ sort_qs('added') }}">First seen{{ sort_arrow('added') }}</a></th>
+  <th>Description</th>
+ </tr>
+ {% for v in videos %}
+ <tr class="{% if v.all_revoked %}revoked-row{% endif %}">
+   <td>{% if v.thumbnail_url %}<img src="{{ v.thumbnail_url }}" class="poster" loading="lazy">{% endif %}</td>
+   <td><strong>{{ v.title }}</strong>{% if v.type == 'tv_series' %} <span class="badge type-tv">TV</span>{% endif %}{% if v.rating %} <small>[{{ v.rating }}]</small>{% endif %}</td>
+   <td>{{ v.year or '' }}</td>
+   <td>{% if v.quality %}<span class="badge quality">{{ v.quality }}</span>{% endif %}</td>
+   <td>
+     {% for s in v.sources %}
+       {% if s.source == 'vudu' %}
+       <a href="https://athome.fandango.com/content/browse/details/movie/{{ s.source_id }}" target="_blank" class="badge vudu">Vudu</a>
+       {% else %}
+       <a href="https://moviesanywhere.com/movie/{{ s.source_id }}" target="_blank" class="badge ma">MA</a>
+       {% endif %}
+       {% if not s.is_active %}<span class="badge revoked-badge" title="Removed {{ s.removed_date }}">revoked</span>{% endif %}
+     {% endfor %}
+   </td>
+   <td><small>{{ v.first_seen or '' }}</small></td>
+   <td class="desc">{{ (v.description or '')[:200] }}{% if v.description and v.description|length > 200 %}...{% endif %}</td>
+ </tr>
+ {% endfor %}
+</table>
+{% else %}
+ <p class="empty">{% if q %}No results for "{{ q }}".{% else %}Type a search term above.{% endif %}</p>
+{% endif %}
+</body>
+</html>
