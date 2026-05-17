@@ -17,7 +17,7 @@
   <Actions>
     <Exec>
       <Command>streaming-catalog</Command>
-      <Arguments>sync --collect-first</Arguments>
+      <Arguments>update</Arguments>
       <WorkingDirectory>C:\path\to\streaming-catalog</WorkingDirectory>
     </Exec>
   </Actions>

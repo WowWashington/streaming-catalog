@@ -9,21 +9,19 @@ load_dotenv()
 
 
 def resolve_chrome_profile() -> Path:
-    """Resolve the Chrome user-data directory. Env var > platform default."""
+    """
+    Resolve the Chrome user-data directory for Selenium.
+
+    Uses a DEDICATED profile directory for StreamingCatalog (not the user's
+    main Chrome profile). This avoids Chrome 148+ security restrictions that
+    block Selenium from attaching to the real profile.
+
+    The user logs in once via 'streaming-catalog login', and sessions persist.
+    """
     if env := os.environ.get("STREAMING_CATALOG_CHROME_PROFILE"):
         return Path(env)
 
-    system = platform.system()
-    if system == "Darwin":
-        return Path.home() / "Library" / "Application Support" / "Google" / "Chrome"
-    elif system == "Windows":
-        local = os.environ.get("LOCALAPPDATA", "")
-        if not local:
-            raise RuntimeError("LOCALAPPDATA not set — cannot detect Chrome profile on Windows")
-        return Path(local) / "Google" / "Chrome" / "User Data"
-    elif system == "Linux":
-        return Path.home() / ".config" / "google-chrome"
-    raise RuntimeError(f"Unsupported platform: {system}. Set STREAMING_CATALOG_CHROME_PROFILE.")
+    return Path.home() / ".streaming-catalog" / "chrome-profile"
 
 
 def resolve_profile_name() -> str:

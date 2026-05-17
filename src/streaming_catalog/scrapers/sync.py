@@ -54,8 +54,13 @@ def dedupe_videos(conn: sqlite3.Connection) -> int:
     return merges
 
 
-def run_sync(services: list[str] | None = None) -> dict:
-    """Run the full sync pipeline."""
+def run_sync(services: list[str] | None = None, progress_factory=None) -> dict:
+    """
+    Run the full sync pipeline.
+
+    progress_factory: optional callable that takes (service_name, total) and
+    returns (progress_callback, finish_callback). Used for CLI progress bars.
+    """
     if services is None:
         services = ["vudu", "ma"]
 
@@ -68,7 +73,10 @@ def run_sync(services: list[str] | None = None) -> dict:
         tv_ids_file = data_dir / "vudu_tv_ids.txt"
         try:
             content_ids = vudu.load_ids_from_file(ids_file)
-            results["vudu"] = vudu.scrape(content_ids, db_path, tv_ids_file)
+            cb, finish = (progress_factory("Vudu", len(content_ids))
+                          if progress_factory else (None, lambda: None))
+            results["vudu"] = vudu.scrape(content_ids, db_path, tv_ids_file, progress_callback=cb)
+            finish()
         except FileNotFoundError as e:
             log.warning("Skipping Vudu: %s", e)
             results["vudu"] = {"skipped": str(e)}
@@ -77,7 +85,10 @@ def run_sync(services: list[str] | None = None) -> dict:
         slugs_file = data_dir / "ma_slugs.txt"
         try:
             slugs = movies_anywhere.load_slugs_from_file(slugs_file)
-            results["movies_anywhere"] = movies_anywhere.scrape(slugs, db_path)
+            cb, finish = (progress_factory("Movies Anywhere", len(slugs))
+                          if progress_factory else (None, lambda: None))
+            results["movies_anywhere"] = movies_anywhere.scrape(slugs, db_path, progress_callback=cb)
+            finish()
         except FileNotFoundError as e:
             log.warning("Skipping Movies Anywhere: %s", e)
             results["movies_anywhere"] = {"skipped": str(e)}

@@ -1,6 +1,6 @@
 # Scheduling Automatic Syncs
 
-StreamingCatalog doesn't bundle a scheduler. Use your OS's native scheduling mechanism to run `streaming-catalog sync --collect-first` on a regular basis.
+StreamingCatalog doesn't bundle a scheduler. Use your OS's native scheduling mechanism to run `streaming-catalog update` on a regular basis.
 
 ## Linux (cron)
 
@@ -11,7 +11,7 @@ crontab -e
 Add:
 ```
 # Weekly sync: Sunday at 3 AM
-0 3 * * 0 cd /path/to/streaming-catalog && /path/to/streaming-catalog sync --collect-first >> /tmp/streaming-catalog.log 2>&1
+0 3 * * 0 cd /path/to/streaming-catalog && /path/to/streaming-catalog update >> /tmp/streaming-catalog.log 2>&1
 ```
 
 ## macOS (launchd)

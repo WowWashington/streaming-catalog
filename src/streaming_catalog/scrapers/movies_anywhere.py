@@ -225,7 +225,7 @@ def mark_missing_as_removed(conn: sqlite3.Connection, seen_slugs: set) -> int:
     return len(missing)
 
 
-def scrape(slugs: list[str], db_path: Path) -> dict:
+def scrape(slugs: list[str], db_path: Path, progress_callback=None) -> dict:
     """Fetch metadata for MA movie slugs and store in DB."""
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON")
@@ -236,7 +236,9 @@ def scrape(slugs: list[str], db_path: Path) -> dict:
     seen_slugs = set(slugs)
 
     for i, slug in enumerate(slugs, 1):
-        if i % 25 == 0:
+        if progress_callback:
+            progress_callback(1)
+        elif i % 25 == 0:
             log.info("MA: processed %d/%d", i, len(slugs))
 
         row = _fetch_movie_page(slug, session)

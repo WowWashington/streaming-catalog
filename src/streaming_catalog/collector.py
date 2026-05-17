@@ -16,7 +16,7 @@ import os
 import time
 from pathlib import Path
 
-from streaming_catalog.config import resolve_chrome_profile, resolve_profile_name, resolve_data_dir
+from streaming_catalog.config import resolve_chrome_profile, resolve_data_dir
 
 log = logging.getLogger(__name__)
 
@@ -126,19 +126,32 @@ def collect_via_selenium(
             "selenium not installed. Run: pip install streaming-catalog[collect]"
         ) from e
 
-    profile_dir = str(resolve_chrome_profile())
-    profile_name = resolve_profile_name()
+    profile_dir = resolve_chrome_profile()
+    profile_dir.mkdir(parents=True, exist_ok=True)
     data_dir = resolve_data_dir()
     data_dir.mkdir(parents=True, exist_ok=True)
 
     opts = Options()
-    opts.add_argument(f"--user-data-dir={profile_dir}")
-    opts.add_argument(f"--profile-directory={profile_name}")
+    opts.add_argument(f"--user-data-dir={str(profile_dir)}")
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-blink-features=AutomationControlled")
 
-    log.info("Opening Chrome with profile: %s/%s", profile_dir, profile_name)
-    driver = webdriver.Chrome(options=opts)
+    log.info("Opening Chrome with profile: %s", profile_dir)
+    try:
+        driver = webdriver.Chrome(options=opts)
+    except Exception as e:
+        msg = str(e)
+        lock_file = profile_dir / "SingletonLock"
+        hint = ""
+        if lock_file.exists():
+            hint = "\n  - Found stale lock file — try: rm ~/.streaming-catalog/chrome-profile/SingletonLock"
+        raise RuntimeError(
+            f"Chrome failed to start. Common causes:\n"
+            f"  - Chrome is already running (quit it first)\n"
+            f"  - A previous session crashed and left a lock file{hint}\n"
+            f"\nProfile: {profile_dir}\n"
+            f"Error: {msg[:200]}"
+        ) from e
     driver.set_script_timeout(timeout)
 
     try:

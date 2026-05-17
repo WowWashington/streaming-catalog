@@ -197,7 +197,8 @@ def mark_missing_as_removed(conn: sqlite3.Connection, seen_ids: set) -> int:
     return len(missing)
 
 
-def scrape(content_ids: list[str], db_path: Path, tv_ids_file: Path | None = None) -> dict:
+def scrape(content_ids: list[str], db_path: Path, tv_ids_file: Path | None = None,
+           progress_callback=None) -> dict:
     """Fetch metadata for given content IDs and store in DB."""
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON")
@@ -212,7 +213,9 @@ def scrape(content_ids: list[str], db_path: Path, tv_ids_file: Path | None = Non
     seen_ids = set(content_ids)
 
     for i, cid in enumerate(content_ids, 1):
-        if i % 50 == 0:
+        if progress_callback:
+            progress_callback(1)
+        elif i % 50 == 0:
             log.info("Vudu: processed %d/%d", i, len(content_ids))
 
         content = _fetch_content(cid, session)

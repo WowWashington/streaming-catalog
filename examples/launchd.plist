@@ -7,8 +7,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/usr/local/bin/streaming-catalog</string>
-        <string>sync</string>
-        <string>--collect-first</string>
+        <string>update</string>
     </array>
     <key>WorkingDirectory</key>
     <string>/path/to/streaming-catalog</string>
