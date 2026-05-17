@@ -61,5 +61,5 @@ def resolve_port() -> int:
 
 
 def schema_path() -> Path:
-    """Path to the bundled schema.sql file."""
-    return Path(__file__).parent.parent.parent / "schema.sql"
+    """Path to the bundled schema.sql file (lives inside the package so it ships in wheels)."""
+    return Path(__file__).parent / "schema.sql"

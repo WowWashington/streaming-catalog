@@ -34,8 +34,18 @@ HEADERS = {
 
 
 def _parse_response(text: str) -> Optional[dict]:
-    """Strip /*-secure- wrapper and parse JSON."""
-    clean = re.sub(r"^/\*-secure-", "", text).rstrip("*/")
+    """
+    Strip the /*-secure-{...}*/ wrapper Vudu apicache returns and parse JSON.
+
+    Uses explicit prefix/suffix removal (not rstrip, which would eat any
+    trailing run of `*` or `/` characters) and tolerates surrounding
+    whitespace.
+    """
+    clean = text.strip()
+    if clean.startswith("/*-secure-"):
+        clean = clean[len("/*-secure-"):]
+    if clean.endswith("*/"):
+        clean = clean[:-2]
     try:
         return json.loads(clean)
     except json.JSONDecodeError as e:
@@ -177,11 +187,17 @@ def upsert_video(conn: sqlite3.Connection, row: dict, source_id: str) -> int:
 
 
 def mark_missing_as_removed(conn: sqlite3.Connection, seen_ids: set) -> int:
-    """Mark vudu sources not seen this run as revoked."""
+    """
+    Mark Vudu sources not present in this run's seen_ids as revoked.
+
+    seen_ids is the authoritative "what we saw today" set, so we compute the
+    diff in Python rather than relying on last_seen_date — a same-day re-run
+    of this sync would otherwise miss newly-revoked items because their
+    last_seen_date was already bumped by the previous run.
+    """
     cur = conn.cursor()
     cur.execute(
-        """SELECT source_id FROM video_sources
-           WHERE source='vudu' AND is_active=1 AND last_seen_date != date('now')"""
+        "SELECT source_id FROM video_sources WHERE source='vudu' AND is_active=1"
     )
     missing = [r[0] for r in cur.fetchall() if r[0] not in seen_ids]
     if not missing:

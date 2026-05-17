@@ -31,10 +31,13 @@ def dedupe_videos(conn: sqlite3.Connection) -> int:
 
     groups: dict[tuple, list[int]] = {}
     for vid, title, year in rows:
-        key = (normalize_title(title or ""), year or 0)
-        if not key[0]:
+        norm = normalize_title(title or "")
+        # Require both a non-empty normalized title AND a known year. Two
+        # different films can share a normalized title (re-releases, generic
+        # names like "Awakening"), so without a year we can't safely merge.
+        if not norm or not year:
             continue
-        groups.setdefault(key, []).append(vid)
+        groups.setdefault((norm, year), []).append(vid)
 
     merges = 0
     for key, ids in groups.items():

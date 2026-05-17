@@ -204,12 +204,17 @@ def upsert_video(conn: sqlite3.Connection, row: dict, slug: str) -> int:
 
 
 def mark_missing_as_removed(conn: sqlite3.Connection, seen_slugs: set) -> int:
-    """Mark MA sources not seen this run as revoked."""
+    """
+    Mark MA sources not present in this run's seen_slugs as revoked.
+
+    seen_slugs is the authoritative "what we saw today" set, so we compute the
+    diff in Python rather than relying on last_seen_date — a same-day re-run
+    of this sync would otherwise miss newly-revoked items because their
+    last_seen_date was already bumped by the previous run.
+    """
     cur = conn.cursor()
     cur.execute(
-        """SELECT source_id FROM video_sources
-           WHERE source='movies_anywhere' AND is_active=1
-             AND last_seen_date != date('now')"""
+        "SELECT source_id FROM video_sources WHERE source='movies_anywhere' AND is_active=1"
     )
     missing = [r[0] for r in cur.fetchall() if r[0] not in seen_slugs]
     if not missing:
