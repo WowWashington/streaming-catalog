@@ -1,6 +1,5 @@
-"""Platform detection and configuration resolution."""
+"""Configuration resolution (env vars, .env file, per-user defaults)."""
 import os
-import platform
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -36,11 +35,6 @@ def resolve_chrome_profile() -> Path:
         return Path(env)
 
     return Path.home() / ".streaming-catalog" / "chrome-profile"
-
-
-def resolve_profile_name() -> str:
-    """Chrome profile directory name (e.g. 'Default', 'Profile 1')."""
-    return os.environ.get("STREAMING_CATALOG_CHROME_PROFILE_NAME", "Default")
 
 
 def resolve_db_path() -> Path:

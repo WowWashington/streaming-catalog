@@ -10,7 +10,7 @@ import webbrowser
 import click
 
 from streaming_catalog import __version__
-from streaming_catalog.config import resolve_db_path, resolve_data_dir, resolve_port
+from streaming_catalog.config import resolve_db_path, resolve_port
 
 
 def _ensure_db():
@@ -104,7 +104,6 @@ def main(ctx, verbose, db_path):
     )
     ctx.ensure_object(dict)
     if db_path:
-        import os
         os.environ["STREAMING_CATALOG_DB"] = db_path
 
 
@@ -114,7 +113,7 @@ def main(ctx, verbose, db_path):
 def setup():
     """First-time setup: create database and log in to streaming services."""
     import shutil
-    from streaming_catalog.config import user_config_dir, user_config_file, resolve_port
+    from streaming_catalog.config import user_config_dir, user_config_file
 
     webdriver, Options = _ensure_selenium()
 
@@ -128,8 +127,15 @@ def setup():
     click.echo("(Pick something else if 5858 is already in use on your machine.)")
     port = click.prompt("Port for search UI", default=resolve_port(), type=int)
 
-    # Persist port to user config so future runs use it
-    user_config_dir().mkdir(parents=True, exist_ok=True)
+    # Persist port to user config so future runs use it. Write to a tmp file
+    # then rename so we never leave a half-written config behind.
+    cfg_dir = user_config_dir()
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    if os.name == "posix":
+        try:
+            cfg_dir.chmod(0o700)
+        except OSError:
+            pass
     config_file = user_config_file()
     config_lines = []
     if config_file.exists():
@@ -138,7 +144,14 @@ def setup():
             if not l.startswith("STREAMING_CATALOG_PORT=")
         ]
     config_lines.append(f"STREAMING_CATALOG_PORT={port}")
-    config_file.write_text("\n".join(config_lines) + "\n")
+    tmp = config_file.with_suffix(config_file.suffix + ".tmp")
+    tmp.write_text("\n".join(config_lines) + "\n")
+    if os.name == "posix":
+        try:
+            tmp.chmod(0o600)
+        except OSError:
+            pass
+    tmp.replace(config_file)
     os.environ["STREAMING_CATALOG_PORT"] = str(port)
     click.echo(f"Saved port to {config_file}")
 
@@ -270,7 +283,20 @@ def search(port, host, no_open):
     click.echo(f"Search UI: {url}")
 
     if not no_open:
-        webbrowser.open(url)
+        # Open the browser after the server is actually listening so we don't
+        # race the bind. A short background thread polls and then opens.
+        import threading
+        import socket
+
+        def _open_when_ready():
+            for _ in range(50):  # up to ~5 seconds
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    if s.connect_ex((host, port)) == 0:
+                        webbrowser.open(url)
+                        return
+                time.sleep(0.1)
+
+        threading.Thread(target=_open_when_ready, daemon=True).start()
 
     try:
         app.run(host=host, port=port, debug=False)

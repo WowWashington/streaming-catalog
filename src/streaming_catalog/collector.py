@@ -107,6 +107,19 @@ return new Promise(resolve => {
 """
 
 
+def _restrict_perms(path: Path) -> None:
+    """
+    Best-effort chmod 0700 on the given directory (no-op on Windows or any
+    filesystem that doesn't support POSIX perms). The Chrome profile holds
+    session cookies, so we don't want it world-readable on shared systems.
+    """
+    try:
+        if os.name == "posix":
+            path.chmod(0o700)
+    except OSError:
+        pass
+
+
 def collect_via_selenium(
     services: list[str] | None = None,
     timeout: int = 120,
@@ -128,6 +141,7 @@ def collect_via_selenium(
 
     profile_dir = resolve_chrome_profile()
     profile_dir.mkdir(parents=True, exist_ok=True)
+    _restrict_perms(profile_dir)
     data_dir = resolve_data_dir()
     data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -146,7 +160,7 @@ def collect_via_selenium(
         lock_file = profile_dir / "SingletonLock"
         hint = ""
         if lock_file.exists():
-            hint = "\n  - Found stale lock file — try: rm ~/.streaming-catalog/chrome-profile/SingletonLock"
+            hint = f"\n  - Found stale lock file. Delete it and try again:\n      {lock_file}"
         raise RuntimeError(
             f"Chrome failed to start. Common causes:\n"
             f"  - Chrome is already running (quit it first)\n"

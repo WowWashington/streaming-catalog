@@ -1,47 +1,33 @@
-# Chrome Profile Setup
+# Chrome Setup
 
-StreamingCatalog uses your existing Chrome browser profile to access your library pages. You must be logged in to both services before running `streaming-catalog collect`.
+StreamingCatalog uses a **dedicated Chrome profile** — separate from your normal Chrome browsing profile. This is intentional: Chrome 148+ enforces security restrictions that prevent Selenium from driving a browser that's also being used as your everyday browser. Using a dedicated profile sidesteps that, keeps your main browsing data untouched, and avoids weird conflicts if your normal Chrome is open at the same time.
 
-## Finding your Chrome profile path
+## Where the profile lives
 
-The tool auto-detects your Chrome profile location per OS:
+By default: `~/.streaming-catalog/chrome-profile/`
 
-| OS | Default path |
-|----|-------------|
-| macOS | `~/Library/Application Support/Google/Chrome` |
-| Windows | `%LOCALAPPDATA%\Google\Chrome\User Data` |
-| Linux | `~/.config/google-chrome` |
+That's the same on macOS, Windows, and Linux. The directory is created on first `streaming-catalog setup`. The tool sets permissions to `0700` on POSIX systems so other local users on a shared machine can't read your session cookies.
 
-Override with: `STREAMING_CATALOG_CHROME_PROFILE=/path/to/chrome/user-data`
-
-## Multiple profiles
-
-If you use multiple Chrome profiles, set the profile name:
+You can override the location with an env var:
 
 ```bash
-STREAMING_CATALOG_CHROME_PROFILE_NAME="Profile 2"
+STREAMING_CATALOG_CHROME_PROFILE=/some/other/path
 ```
 
-The default is `"Default"` (Chrome's first/main profile).
+## Logging in
 
-## Verifying you're logged in
+Run `streaming-catalog setup` (or `streaming-catalog login` if you already have a database). Chrome opens with two tabs — Fandango at Home and Movies Anywhere. Log in to both, then close Chrome. The terminal will detect the close and continue.
 
-Before running `collect`, verify manually:
+Your login persists in that dedicated profile across runs. You only need to re-log in when:
+- The services' session cookies expire (varies, typically weeks to months)
+- You delete the profile directory yourself
 
-1. Open Chrome and navigate to `https://athome.fandango.com/content/browse/mymovies`
-   - You should see your movie library grid
-2. Navigate to `https://moviesanywhere.com/my-movies`
-   - You should see "X Movies" in the header with your library below
+## "Chrome failed to start"
 
-If either page asks you to log in, do so in Chrome first.
+The most common cause: **Chrome was running when you launched `setup` or `collect`**. Even though we use a separate profile, macOS sometimes blocks Selenium from launching a new Chrome instance while another one is still running. Cmd+Q Chrome completely (close all windows, dot under the dock icon disappears) and try again.
 
-## Important notes
+If you killed Chrome forcefully and now `setup` complains about a lock file, delete the file shown in the error message and try again.
 
-- Chrome must not be running in the background when `collect` starts (Selenium needs to open it fresh with your profile)
-- The Chrome window must be visible — headless mode is not supported
-- Do not interact with the Chrome window during collection (~30-60 seconds)
-- If collection returns 0 items, your session likely expired — log in again in Chrome
+## Other Chromium browsers
 
-## Chromium / Brave / Edge
-
-These browsers use similar profile structures but different paths. Set `STREAMING_CATALOG_CHROME_PROFILE` to point at your browser's user-data directory. Chromium-based browsers generally work, but only Chrome is officially tested.
+Brave, Edge, Chromium, and similar browsers may work but aren't officially tested. The Selenium-Manager binary that selects the driver assumes Google Chrome; if you point `STREAMING_CATALOG_CHROME_PROFILE` at an Edge/Brave profile, behavior is undefined.

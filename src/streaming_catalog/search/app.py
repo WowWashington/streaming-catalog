@@ -69,6 +69,14 @@ def create_app(db_path: Path | None = None) -> Flask:
             page = 1
 
         conn = db()
+        try:
+            return _render(conn, q, source, quality_filter, type_filter,
+                           show_revoked, sort, page)
+        finally:
+            conn.close()
+
+    def _render(conn, q, source, quality_filter, type_filter,
+                show_revoked, sort, page):
         cur = conn.cursor()
 
         cur.execute("SELECT COUNT(*) FROM videos")
@@ -176,8 +184,6 @@ def create_app(db_path: Path | None = None) -> Flask:
                 (s["first_seen_date"] for s in srcs if s["first_seen_date"]), default=None
             )
             videos.append(v)
-
-        conn.close()
 
         # Pagination info
         showing_from = offset + 1 if videos else 0
