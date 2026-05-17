@@ -20,6 +20,15 @@ No credentials are stored — the tool uses a dedicated Chrome profile that you 
 ## Quick Start
 
 ```bash
+# Clone and enter the repo
+git clone https://github.com/WowWashington/streaming-catalog.git
+cd streaming-catalog
+
+# (Recommended) Use a virtual environment so the CLI ends up on your PATH
+python3 -m venv .venv
+source .venv/bin/activate          # macOS/Linux
+# .venv\Scripts\activate            # Windows PowerShell
+
 # Install
 pip install ".[all]"
 
@@ -33,7 +42,19 @@ streaming-catalog update
 streaming-catalog search
 ```
 
-That's it. Three commands.
+That's it. Three commands after install.
+
+### If `streaming-catalog` isn't found
+
+If pip installed the package but the `streaming-catalog` command isn't on your PATH, you can always run it as a Python module:
+
+```bash
+python3 -m streaming_catalog setup
+python3 -m streaming_catalog update
+python3 -m streaming_catalog search
+```
+
+This works identically. Using a virtual environment (as shown above) avoids this issue.
 
 ## Commands
 
