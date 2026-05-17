@@ -2,10 +2,10 @@ services:
   search:
     build: .
     ports:
-      - "${STREAMING_CATALOG_PORT:-18797}:18797"
+      - "${STREAMING_CATALOG_PORT:-5858}:5858"
     volumes:
       - ./data:/app/data:ro
     environment:
       - STREAMING_CATALOG_DB=/app/data/catalog.db
-      - STREAMING_CATALOG_PORT=18797
+      - STREAMING_CATALOG_PORT=5858
     restart: unless-stopped

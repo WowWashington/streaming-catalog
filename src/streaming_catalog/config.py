@@ -5,7 +5,21 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+
+def user_config_dir() -> Path:
+    """The directory where StreamingCatalog stores its per-user config."""
+    return Path.home() / ".streaming-catalog"
+
+
+def user_config_file() -> Path:
+    """Per-user .env file written by 'streaming-catalog setup'."""
+    return user_config_dir() / "config.env"
+
+
+# Load .env from CWD first (project-level override), then user config (per-user defaults)
 load_dotenv()
+if user_config_file().exists():
+    load_dotenv(user_config_file(), override=False)
 
 
 def resolve_chrome_profile() -> Path:
@@ -43,7 +57,7 @@ def resolve_data_dir() -> Path:
 
 def resolve_port() -> int:
     """Resolve the search UI port."""
-    return int(os.environ.get("STREAMING_CATALOG_PORT", "18797"))
+    return int(os.environ.get("STREAMING_CATALOG_PORT", "5858"))
 
 
 def schema_path() -> Path:

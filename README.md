@@ -88,7 +88,7 @@ Copy `.env.example` to `.env` to customize. All settings are optional.
 |----------|---------|-------------|
 | `STREAMING_CATALOG_CHROME_PROFILE` | `~/.streaming-catalog/chrome-profile` | Where to store the dedicated Chrome profile |
 | `STREAMING_CATALOG_DB` | `./data/catalog.db` | Database file path |
-| `STREAMING_CATALOG_PORT` | `18797` | Search UI port |
+| `STREAMING_CATALOG_PORT` | `5858` | Search UI port |
 
 ## Docker (optional, search UI only)
 
@@ -97,7 +97,7 @@ The search UI can run in Docker for always-on access. The collection step always
 ```bash
 # After running setup + update locally:
 docker compose up -d
-# Search UI at http://localhost:18797
+# Search UI at http://localhost:5858
 ```
 
 ## How it works

@@ -62,7 +62,7 @@ pip install ".[all]"              # Full install
 streaming-catalog init            # Create data/ + catalog.db
 streaming-catalog collect         # Harvest IDs from logged-in Chrome
 streaming-catalog sync            # Fetch metadata, dedup, build FTS
-streaming-catalog search          # Web UI on :18797
+streaming-catalog search          # Web UI on :5858
 streaming-catalog status          # DB stats
 streaming-catalog export --format json -o library.json
 ```

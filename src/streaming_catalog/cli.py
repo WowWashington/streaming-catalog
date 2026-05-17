@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import time
 import webbrowser
@@ -82,19 +83,40 @@ def main(ctx, verbose, db_path):
 @main.command()
 def setup():
     """First-time setup: create database and log in to streaming services."""
+    import shutil
+    from streaming_catalog.config import user_config_dir, user_config_file, resolve_port
+
     webdriver, Options = _ensure_selenium()
 
     # Step 1: Init DB
     db_path = _ensure_db()
     click.echo(f"Database ready: {db_path}")
 
-    # Step 2: Open Chrome for login
+    # Step 2: Choose port
     click.echo()
-    click.echo("Opening Chrome — please log in to both services:")
-    click.echo("  Tab 1: Fandango at Home (opens automatically)")
-    click.echo("  Tab 2: Movies Anywhere (opens automatically)")
+    click.echo("The search UI runs on a local web port. Default: 5858.")
+    click.echo("(Pick something else if 5858 is already in use on your machine.)")
+    port = click.prompt("Port for search UI", default=resolve_port(), type=int)
+
+    # Persist port to user config so future runs use it
+    user_config_dir().mkdir(parents=True, exist_ok=True)
+    config_file = user_config_file()
+    config_lines = []
+    if config_file.exists():
+        config_lines = [
+            l for l in config_file.read_text().splitlines()
+            if not l.startswith("STREAMING_CATALOG_PORT=")
+        ]
+    config_lines.append(f"STREAMING_CATALOG_PORT={port}")
+    config_file.write_text("\n".join(config_lines) + "\n")
+    os.environ["STREAMING_CATALOG_PORT"] = str(port)
+    click.echo(f"Saved port to {config_file}")
+
+    # Step 3: Open Chrome for login
     click.echo()
-    click.echo("Close Chrome when you're logged in to both.")
+    click.echo("Next: opening Chrome with two tabs to log in.")
+    click.echo("  Tab 1: Fandango at Home")
+    click.echo("  Tab 2: Movies Anywhere")
     click.echo()
 
     opts, _ = _chrome_options()
@@ -111,14 +133,31 @@ def setup():
     # Wait for user to close Chrome
     while True:
         try:
-            _ = driver.window_handles
-            if not _:
+            handles = driver.window_handles
+            if not handles:
                 break
         except Exception:
             break
         time.sleep(1)
 
-    click.echo("Setup complete! Run 'streaming-catalog update' to build your library.")
+    # Step 4: Tell user exactly what to run next
+    cmd_prefix = "streaming-catalog" if shutil.which("streaming-catalog") else "python3 -m streaming_catalog"
+
+    click.echo()
+    click.echo("=" * 60)
+    click.echo("Setup complete!")
+    click.echo("=" * 60)
+    click.echo()
+    click.echo("Next, run these commands in your shell:")
+    click.echo()
+    click.echo(f"  1. Collect your library and fetch metadata (~10 min):")
+    click.echo(f"     {cmd_prefix} update")
+    click.echo()
+    click.echo(f"  2. Open the search UI in your browser:")
+    click.echo(f"     {cmd_prefix} search")
+    click.echo()
+    click.echo(f"     (will open at http://127.0.0.1:{port})")
+    click.echo()
 
 
 # ─── Update (collect + sync) ──────────────────────────────────────────────────
@@ -206,7 +245,14 @@ def search(port, host, no_open):
     if not no_open:
         webbrowser.open(url)
 
-    app.run(host=host, port=port, debug=False)
+    try:
+        app.run(host=host, port=port, debug=False)
+    except OSError as e:
+        if "Address already in use" in str(e) or e.errno == 48:
+            click.echo(f"\nPort {port} is already in use.", err=True)
+            click.echo(f"Try a different port: streaming-catalog search --port 5859", err=True)
+            sys.exit(1)
+        raise
 
 
 # ─── Individual commands (advanced) ──────────────────────────────────────────
