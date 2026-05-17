@@ -1,127 +1,83 @@
 # StreamingCatalog
 
-Catalog your **Fandango at Home** (Vudu) and **Movies Anywhere** libraries into a searchable SQLite database with full-text search.
+A local, searchable catalog of the movies and TV you own on **Fandango at Home** (Vudu) and **Movies Anywhere**.
 
-## What it does
+## Why this exists
 
-1. Logs into your accounts in a managed Chrome session (one-time)
-2. Scrolls your library pages to collect what you own
-3. Fetches metadata for each title from public APIs
-4. Stores everything in a local SQLite database with full-text search
-5. Serves a web UI to search, filter, and browse your collection
+Neither Fandango at Home nor Movies Anywhere gives you a real way to *search* what you own. You can scroll a virtualized grid and squint at posters, but if you want to ask "do I own *Blade Runner*?" or "show me everything I own from 1997," you're out of luck.
 
-No credentials are stored — the tool uses a dedicated Chrome profile that you log into once.
+This tool builds a searchable inventory of your library — locally, in a SQLite database you control — by collecting the data the services already show you in the browser.
 
-## Requirements
+## How it works (and the trade-offs)
 
-- Python 3.9+
-- Google Chrome installed
+The services don't expose a clean public API for "list everything I own," so the tool has to drive a real Chrome window to scroll through your library pages and harvest item IDs. Once it has the IDs, metadata for each title is fetched from public endpoints (no authentication needed for that part).
+
+A few things to know upfront:
+
+- **You have to be logged in.** The collector reuses a dedicated Chrome profile that you log into once via `streaming-catalog setup`. Your login lives in that local Chrome profile — nothing is sent anywhere or stored outside your machine.
+- **The Chrome window needs to be visible during collection.** Both services use lazy-loading UIs that won't render items unless a real browser viewport is scrolling them. The Movies Anywhere page specifically requires synthetic PageDown keypresses to advance — that's the only way to reliably load all your titles. So during collection (a couple of minutes), Chrome is on screen doing its thing.
+- **Cross-service titles try to merge but sometimes show as duplicates.** When you own the same movie on both services it gets merged into one row. But the services sometimes name things differently (re-releases, bundles, alternate cuts, a stray colon, the year being off), so a small number of titles may still appear twice. That's a limitation of matching by name + year — fixable by hand if it bothers you.
+
+## What you get
+
+- A local SQLite database of everything you own across both services
+- A web UI with full-text search, filters by service / quality / type, sortable columns, and posters that zoom on hover
+- **"First seen" dates** — refresh later and you'll see when new purchases first showed up
+- **Revoked view** — if a title disappears from your library (which has happened on streaming stores before), it's marked as revoked rather than silently deleted, so you have a record of what you lost and when
+- Export to CSV or JSON if you want to do something else with the data
 
 ## Quick Start
 
 ```bash
-# Clone and enter the repo
 git clone https://github.com/WowWashington/streaming-catalog.git
 cd streaming-catalog
 
-# (Recommended) Use a virtual environment so the CLI ends up on your PATH
+# Recommended: use a virtual environment
 python3 -m venv .venv
-source .venv/bin/activate          # macOS/Linux
-# .venv\Scripts\activate            # Windows PowerShell
+source .venv/bin/activate            # macOS/Linux
+# .venv\Scripts\activate              # Windows PowerShell
 
-# Install
 pip install ".[all]"
 
-# First-time setup (creates database + opens Chrome for login)
-streaming-catalog setup
-
-# Collect your library and fetch metadata
-streaming-catalog update
-
-# Browse your library (auto-opens in your browser)
-streaming-catalog search
+streaming-catalog setup     # creates DB + opens Chrome for one-time login
+streaming-catalog update    # collects library + fetches metadata
+streaming-catalog search    # opens the web UI in your browser
 ```
 
-That's it. Three commands after install.
-
-### If `streaming-catalog` isn't found
-
-If pip installed the package but the `streaming-catalog` command isn't on your PATH, you can always run it as a Python module:
-
-```bash
-python3 -m streaming_catalog setup
-python3 -m streaming_catalog update
-python3 -m streaming_catalog search
-```
-
-This works identically. Using a virtual environment (as shown above) avoids this issue.
+To refresh later (e.g. weekly), just run `streaming-catalog update` again. New purchases get new "first seen" dates; anything that disappears moves to the revoked view.
 
 ## Commands
 
 | Command | What it does |
 |---------|-------------|
-| `setup` | First-time setup — creates DB and opens Chrome for you to log in |
-| `update` | Main command — collects library + fetches metadata (run weekly) |
+| `setup` | One-time setup — creates DB and opens Chrome for login |
+| `update` | Main command — collects library + fetches metadata |
 | `search` | Opens the search UI in your browser |
 | `status` | Database stats |
-| `export` | Export library to CSV or JSON |
-
-### Advanced commands
-
-| Command | What it does |
-|---------|-------------|
+| `export` | Export to CSV or JSON |
 | `login` | Re-log in if your session expires |
-| `collect` | Just harvest library IDs (without metadata) |
+| `collect` | Just harvest library IDs (no metadata) |
 | `sync` | Just fetch metadata for already-collected IDs |
 
-### Global options
+## Privacy
 
-- `--db PATH` — Override database path
-- `-v, --verbose` — Show debug logging
-- `--version` — Show version
+- **All data is stored locally**, in a SQLite file in `./data/catalog.db`
+- **Your login lives in a Chrome profile** at `~/.streaming-catalog/chrome-profile` — same encryption as your normal Chrome
+- **No credentials are stored** anywhere by this tool itself
+- **Nothing is uploaded** to any third party
 
-## Configuration
+## Scope and contributions
 
-Copy `.env.example` to `.env` to customize. All settings are optional.
+This is intentionally a small, focused tool: catalog what you own on Vudu/Fandango at Home and Movies Anywhere, search it locally. It's a framework that could be extended in lots of useful directions — other services (Apple, Amazon, Google Play), other content types (books, games), richer metadata, watched-status tracking, recommendation cross-references with rental availability, etc.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `STREAMING_CATALOG_CHROME_PROFILE` | `~/.streaming-catalog/chrome-profile` | Where to store the dedicated Chrome profile |
-| `STREAMING_CATALOG_DB` | `./data/catalog.db` | Database file path |
-| `STREAMING_CATALOG_PORT` | `5858` | Search UI port |
+Pull requests, forks, and outright reuses are welcome. If you build something nice on top of this I'd love a credit, but you do you.
 
-## Docker (optional, search UI only)
+## Requirements
 
-The search UI can run in Docker for always-on access. The collection step always runs natively (needs Chrome).
-
-```bash
-# After running setup + update locally:
-docker compose up -d
-# Search UI at http://localhost:5858
-```
-
-## How it works
-
-**Login session**: The tool uses a dedicated Chrome profile at `~/.streaming-catalog/chrome-profile`. You log in once via `streaming-catalog setup`, and the session persists across runs. This avoids Chrome's security restrictions on automating your main browser profile.
-
-**Library collection**: Selenium drives Chrome through your library pages:
-- **Fandango at Home**: Scrolls a virtualized list, harvesting content IDs from links
-- **Movies Anywhere**: Dispatches PageDown keys to trigger MA's lazy loader (the only method that works), then harvests slugs
-
-**Metadata**: Fetched from public endpoints, no auth needed:
-- Vudu's `apicache.vudu.com` API
-- Movies Anywhere's per-movie JSON-LD pages
-
-**Cross-service dedup**: Titles you own on both services are merged into a single video record with both source links.
-
-## Scheduling
-
-This tool doesn't include a built-in scheduler. See [docs/scheduling.md](docs/scheduling.md) for cron/Task Scheduler/launchd examples.
-
-## Troubleshooting
-
-See [docs/troubleshooting.md](docs/troubleshooting.md).
+- Python 3.9+
+- Google Chrome installed
+- An account on Fandango at Home and/or Movies Anywhere (with stuff in it, presumably)
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE). Use it, fork it, sell it, build something better on top of it. Attribution to me is appreciated but not required.
