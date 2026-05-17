@@ -222,7 +222,8 @@ def scrape(content_ids: list[str], db_path: Path, tv_ids_file: Path | None = Non
 
     tv_ids: set = set()
     if tv_ids_file and tv_ids_file.exists():
-        tv_ids = set(tv_ids_file.read_text().strip().replace("\n", ",").split(","))
+        raw = tv_ids_file.read_text().strip().replace("\n", ",")
+        tv_ids = {x for x in raw.split(",") if x}
 
     stats = {"new": 0, "updated": 0, "failed": 0, "revoked": 0, "total": len(content_ids)}
     log.info("Vudu: fetching metadata for %d content IDs", len(content_ids))
@@ -234,25 +235,29 @@ def scrape(content_ids: list[str], db_path: Path, tv_ids_file: Path | None = Non
         elif i % 50 == 0:
             log.info("Vudu: processed %d/%d", i, len(content_ids))
 
-        content = _fetch_content(cid, session)
-        if not content:
+        try:
+            content = _fetch_content(cid, session)
+            if not content:
+                stats["failed"] += 1
+                continue
+
+            row = _content_to_row(content, tv_ids)
+
+            with conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT id FROM video_sources WHERE source='vudu' AND source_id=?",
+                    (cid,),
+                )
+                is_new = cur.fetchone() is None
+                upsert_video(conn, row, cid)
+                if is_new:
+                    stats["new"] += 1
+                else:
+                    stats["updated"] += 1
+        except Exception as e:
+            log.warning("Vudu: skipping %s due to error: %s", cid, e)
             stats["failed"] += 1
-            continue
-
-        row = _content_to_row(content, tv_ids)
-
-        with conn:
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT id FROM video_sources WHERE source='vudu' AND source_id=?",
-                (cid,),
-            )
-            is_new = cur.fetchone() is None
-            upsert_video(conn, row, cid)
-            if is_new:
-                stats["new"] += 1
-            else:
-                stats["updated"] += 1
 
         time.sleep(REQUEST_DELAY)
 

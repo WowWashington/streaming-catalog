@@ -112,13 +112,18 @@ def _jsonld_to_row(slug: str, data: dict) -> dict:
 
     director = data.get("director")
     if isinstance(director, list):
-        director = ", ".join(d.get("name", "") for d in director if isinstance(d, dict))
+        director = ", ".join(
+            d.get("name", "") for d in director if isinstance(d, dict)
+        ) or None
     elif isinstance(director, dict):
         director = director.get("name")
+    elif not isinstance(director, str):
+        director = None
 
     cast_list = data.get("actor") or []
     if isinstance(cast_list, list):
-        cast = json.dumps([a.get("name", "") for a in cast_list if isinstance(a, dict)])
+        names = [a.get("name", "") for a in cast_list if isinstance(a, dict)]
+        cast = json.dumps(names) if names else None
     else:
         cast = None
 
@@ -246,23 +251,27 @@ def scrape(slugs: list[str], db_path: Path, progress_callback=None) -> dict:
         elif i % 25 == 0:
             log.info("MA: processed %d/%d", i, len(slugs))
 
-        row = _fetch_movie_page(slug, session)
-        if not row:
-            stats["failed"] += 1
-            continue
+        try:
+            row = _fetch_movie_page(slug, session)
+            if not row:
+                stats["failed"] += 1
+                continue
 
-        with conn:
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT id FROM video_sources WHERE source='movies_anywhere' AND source_id=?",
-                (slug,),
-            )
-            is_new = cur.fetchone() is None
-            upsert_video(conn, row, slug)
-            if is_new:
-                stats["new"] += 1
-            else:
-                stats["updated"] += 1
+            with conn:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT id FROM video_sources WHERE source='movies_anywhere' AND source_id=?",
+                    (slug,),
+                )
+                is_new = cur.fetchone() is None
+                upsert_video(conn, row, slug)
+                if is_new:
+                    stats["new"] += 1
+                else:
+                    stats["updated"] += 1
+        except Exception as e:
+            log.warning("MA: skipping %s due to error: %s", slug, e)
+            stats["failed"] += 1
 
         time.sleep(REQUEST_DELAY)
 

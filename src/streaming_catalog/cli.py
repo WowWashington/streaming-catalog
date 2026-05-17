@@ -22,6 +22,36 @@ def _ensure_db():
     return db_path
 
 
+def _wait_for_browser_close(driver):
+    """
+    Block until the user closes all Chrome windows.
+
+    Only treats Selenium's "browser is gone" exceptions as a close signal;
+    other errors are logged and the loop keeps polling so a transient hiccup
+    doesn't end the wait prematurely (which would skip the user's login).
+    """
+    from selenium.common.exceptions import (
+        InvalidSessionIdException,
+        NoSuchWindowException,
+        WebDriverException,
+    )
+
+    while True:
+        try:
+            handles = driver.window_handles
+            if not handles:
+                return
+        except (InvalidSessionIdException, NoSuchWindowException):
+            return
+        except WebDriverException as e:
+            # Treat a clean "disconnected" as close; log anything else and retry
+            msg = str(e).lower()
+            if "disconnected" in msg or "no such window" in msg or "not connected" in msg:
+                return
+            logging.debug("transient driver error while waiting: %s", e)
+        time.sleep(1)
+
+
 def _progress_factory(name, total):
     """Create a click.progressbar wrapper that returns (callback, finish) pair."""
     bar = click.progressbar(length=total, label=f"  {name:18s}", show_eta=True, show_percent=True)
@@ -121,24 +151,21 @@ def setup():
 
     opts, _ = _chrome_options()
     driver = webdriver.Chrome(options=opts)
+    try:
+        driver.get("https://athome.fandango.com/content/account/login")
+        time.sleep(2)
+        driver.execute_script("window.open('https://moviesanywhere.com/login', '_blank');")
 
-    driver.get("https://athome.fandango.com/content/account/login")
-    time.sleep(2)
-    driver.execute_script("window.open('https://moviesanywhere.com/login', '_blank');")
+        click.echo("Chrome is open. Log in to both services in the browser tabs.")
+        click.echo("This terminal will wait until you close Chrome.")
+        click.echo()
 
-    click.echo("Chrome is open. Log in to both services in the browser tabs.")
-    click.echo("This terminal will wait until you close Chrome.")
-    click.echo()
-
-    # Wait for user to close Chrome
-    while True:
+        _wait_for_browser_close(driver)
+    finally:
         try:
-            handles = driver.window_handles
-            if not handles:
-                break
+            driver.quit()
         except Exception:
-            break
-        time.sleep(1)
+            pass
 
     # Step 4: Tell user exactly what to run next
     cmd_prefix = "streaming-catalog" if shutil.which("streaming-catalog") else "python3 -m streaming_catalog"
@@ -269,19 +296,18 @@ def login():
     click.echo()
 
     driver = webdriver.Chrome(options=opts)
-    driver.get("https://athome.fandango.com/content/account/login")
-    time.sleep(2)
-    driver.execute_script("window.open('https://moviesanywhere.com/login', '_blank');")
+    try:
+        driver.get("https://athome.fandango.com/content/account/login")
+        time.sleep(2)
+        driver.execute_script("window.open('https://moviesanywhere.com/login', '_blank');")
 
-    click.echo("Waiting... close Chrome when done.")
-    while True:
+        click.echo("Waiting... close Chrome when done.")
+        _wait_for_browser_close(driver)
+    finally:
         try:
-            handles = driver.window_handles
-            if not handles:
-                break
+            driver.quit()
         except Exception:
-            break
-        time.sleep(1)
+            pass
 
     click.echo("Sessions saved.")
 

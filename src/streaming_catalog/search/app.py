@@ -20,6 +20,25 @@ DEFAULT_SORT = "year_desc"
 PAGE_SIZE = 100
 
 
+def _build_fts_query(q: str) -> str:
+    """
+    Build a safe FTS5 MATCH query from raw user input.
+
+    FTS5 treats `"` as a phrase delimiter and various other characters as
+    operators, so a query like `foo"bar` or `.` will raise a sqlite3
+    OperationalError. Tokenize the input by extracting runs of word
+    characters (matches how FTS5's default tokenizer indexes the text),
+    then wrap each token in double quotes with a prefix-match suffix.
+    If nothing is left, return empty so the caller falls back to
+    "no search filter".
+    """
+    if not q:
+        return ""
+    import re
+    tokens = re.findall(r"\w+", q, flags=re.UNICODE)
+    return " ".join(f'"{t}"*' for t in tokens)
+
+
 def create_app(db_path: Path | None = None) -> Flask:
     """Flask app factory."""
     if db_path is None:
@@ -82,8 +101,8 @@ def create_app(db_path: Path | None = None) -> Flask:
 
         where_clauses, params = [], []
 
-        if q:
-            fts_q = " ".join(f'"{w}"*' for w in q.split() if w)
+        fts_q = _build_fts_query(q)
+        if fts_q:
             sql_base = """FROM videos_fts ft
                           JOIN videos v ON ft.rowid = v.id
                           WHERE videos_fts MATCH ?"""
