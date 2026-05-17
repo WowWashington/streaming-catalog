@@ -20,38 +20,80 @@ def normalize_title(title: str) -> str:
     return t
 
 
+YEAR_TOLERANCE = 2  # merge records whose years differ by this much or less
+
+
+def _years_compatible(a, b) -> bool:
+    """
+    Years are compatible (likely the same film) if both are missing, both
+    are present and within YEAR_TOLERANCE, or one is missing and the other
+    is present (no contradiction).
+    """
+    if a is None and b is None:
+        return True
+    if a is None or b is None:
+        return True
+    return abs(a - b) <= YEAR_TOLERANCE
+
+
 def dedupe_videos(conn: sqlite3.Connection) -> int:
     """
-    Merge video records that match by normalized title + year.
-    Strategy: keep lowest id, repoint video_sources, delete duplicates.
+    Merge video records that likely refer to the same film.
+
+    Strategy: bucket records by normalized title, then within each bucket
+    do pairwise year-compatibility checks. This handles three real cases:
+      - Same title + same year (most common)
+      - Same title + slightly different years (metadata sources disagree —
+        Google sometimes returns the wrong year, e.g. Clockwork Orange)
+      - Same title + one source missing the year (no contradiction)
+
+    Records with different years that are more than YEAR_TOLERANCE apart
+    are kept separate, since two different films can share a title
+    (e.g. "Awakening" 1990 vs "Awakening" 2011).
+
+    For each cluster: keep lowest video.id, repoint video_sources, delete dupes.
     """
     cur = conn.cursor()
     cur.execute("SELECT id, title, year FROM videos")
     rows = cur.fetchall()
 
-    groups: dict[tuple, list[int]] = {}
+    # Bucket by normalized title (years compared per-cluster below)
+    by_title: dict[str, list[tuple[int, int | None]]] = {}
     for vid, title, year in rows:
         norm = normalize_title(title or "")
-        # Require both a non-empty normalized title AND a known year. Two
-        # different films can share a normalized title (re-releases, generic
-        # names like "Awakening"), so without a year we can't safely merge.
-        if not norm or not year:
+        if not norm:
             continue
-        groups.setdefault((norm, year), []).append(vid)
+        by_title.setdefault(norm, []).append((vid, year))
 
     merges = 0
-    for key, ids in groups.items():
-        if len(ids) < 2:
+    for norm, entries in by_title.items():
+        if len(entries) < 2:
             continue
-        keeper = min(ids)
-        dupes = [i for i in ids if i != keeper]
-        placeholders = ",".join("?" * len(dupes))
-        cur.execute(
-            f"UPDATE video_sources SET video_id=? WHERE video_id IN ({placeholders})",
-            (keeper, *dupes),
-        )
-        cur.execute(f"DELETE FROM videos WHERE id IN ({placeholders})", dupes)
-        merges += len(dupes)
+        # Build clusters by year-compatibility within this title bucket
+        clusters: list[list[tuple[int, int | None]]] = []
+        for entry in entries:
+            placed = False
+            for cluster in clusters:
+                if any(_years_compatible(entry[1], existing[1]) for existing in cluster):
+                    cluster.append(entry)
+                    placed = True
+                    break
+            if not placed:
+                clusters.append([entry])
+
+        for cluster in clusters:
+            if len(cluster) < 2:
+                continue
+            ids = [vid for vid, _ in cluster]
+            keeper = min(ids)
+            dupes = [i for i in ids if i != keeper]
+            placeholders = ",".join("?" * len(dupes))
+            cur.execute(
+                f"UPDATE video_sources SET video_id=? WHERE video_id IN ({placeholders})",
+                (keeper, *dupes),
+            )
+            cur.execute(f"DELETE FROM videos WHERE id IN ({placeholders})", dupes)
+            merges += len(dupes)
 
     conn.commit()
     return merges
