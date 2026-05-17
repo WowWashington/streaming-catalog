@@ -17,6 +17,7 @@ SORT_OPTIONS = {
     "added_asc": "v.created_at ASC, v.title ASC",
 }
 DEFAULT_SORT = "year_desc"
+PAGE_SIZE = 100
 
 
 def create_app(db_path: Path | None = None) -> Flask:
@@ -26,6 +27,7 @@ def create_app(db_path: Path | None = None) -> Flask:
         db_path = resolve_db_path()
 
     app = Flask(__name__, template_folder=str(Path(__file__).parent / "templates"))
+    app.config["TEMPLATES_AUTO_RELOAD"] = True
 
     def db():
         conn = sqlite3.connect(db_path)
@@ -42,34 +44,52 @@ def create_app(db_path: Path | None = None) -> Flask:
         sort = request.args.get("sort", DEFAULT_SORT)
         if sort not in SORT_OPTIONS:
             sort = DEFAULT_SORT
+        try:
+            page = max(1, int(request.args.get("page", "1")))
+        except ValueError:
+            page = 1
 
         conn = db()
         cur = conn.cursor()
 
         cur.execute("SELECT COUNT(*) FROM videos")
         total = cur.fetchone()[0]
-        cur.execute("SELECT COUNT(*) FROM video_sources WHERE is_active=1")
-        active = cur.fetchone()[0]
+        cur.execute(
+            """SELECT GROUP_CONCAT(DISTINCT source) AS srcs
+               FROM video_sources WHERE is_active=1
+               GROUP BY video_id"""
+        )
+        vudu_only = ma_only = both = 0
+        for (srcs,) in cur.fetchall():
+            parts = set(srcs.split(",")) if srcs else set()
+            if "vudu" in parts and "movies_anywhere" in parts:
+                both += 1
+            elif "vudu" in parts:
+                vudu_only += 1
+            elif "movies_anywhere" in parts:
+                ma_only += 1
+
         cur.execute("SELECT COUNT(*) FROM video_sources WHERE is_active=0")
         revoked = cur.fetchone()[0]
-        cur.execute(
-            """SELECT COUNT(*) FROM (
-                 SELECT video_id FROM video_sources WHERE is_active=1
-                 GROUP BY video_id HAVING COUNT(DISTINCT source) > 1)"""
-        )
-        both = cur.fetchone()[0]
-        stats = {"total": total, "active": active, "revoked": revoked, "both": both}
+
+        stats = {
+            "total": total,
+            "both": both,
+            "vudu_only": vudu_only,
+            "ma_only": ma_only,
+            "revoked": revoked,
+        }
 
         where_clauses, params = [], []
 
         if q:
             fts_q = " ".join(f'"{w}"*' for w in q.split() if w)
-            sql_base = """SELECT v.* FROM videos_fts ft
+            sql_base = """FROM videos_fts ft
                           JOIN videos v ON ft.rowid = v.id
                           WHERE videos_fts MATCH ?"""
             params.append(fts_q)
         else:
-            sql_base = "SELECT * FROM videos v WHERE 1=1"
+            sql_base = "FROM videos v WHERE 1=1"
 
         if quality_filter:
             where_clauses.append("v.quality = ?")
@@ -79,11 +99,48 @@ def create_app(db_path: Path | None = None) -> Flask:
             where_clauses.append("v.type = ?")
             params.append(type_filter)
 
+        # Source filter — pushed into SQL via subquery on video_sources
+        if source == "vudu":
+            where_clauses.append(
+                "v.id IN (SELECT video_id FROM video_sources WHERE is_active=1 "
+                "GROUP BY video_id HAVING GROUP_CONCAT(DISTINCT source) = 'vudu')"
+            )
+        elif source == "movies_anywhere":
+            where_clauses.append(
+                "v.id IN (SELECT video_id FROM video_sources WHERE is_active=1 "
+                "GROUP BY video_id HAVING GROUP_CONCAT(DISTINCT source) = 'movies_anywhere')"
+            )
+        elif source == "both":
+            where_clauses.append(
+                "v.id IN (SELECT video_id FROM video_sources WHERE is_active=1 "
+                "GROUP BY video_id HAVING COUNT(DISTINCT source) = 2)"
+            )
+
+        # Revoked filter — hide videos with no active sources unless requested
+        if not show_revoked:
+            where_clauses.append(
+                "v.id IN (SELECT video_id FROM video_sources WHERE is_active=1)"
+            )
+
         extra = (" AND " + " AND ".join(where_clauses)) if where_clauses else ""
         order_by = SORT_OPTIONS[sort]
-        sql = sql_base + extra + f" ORDER BY {order_by} LIMIT 300"
 
-        cur.execute(sql, params)
+        # Count for pagination
+        count_sql = "SELECT COUNT(*) " + sql_base + extra
+        cur.execute(count_sql, params)
+        result_count = cur.fetchone()[0]
+
+        # Page bounds
+        total_pages = max(1, (result_count + PAGE_SIZE - 1) // PAGE_SIZE)
+        page = min(page, total_pages)
+        offset = (page - 1) * PAGE_SIZE
+
+        # Fetch the current page
+        page_sql = (
+            "SELECT v.* " + sql_base + extra +
+            f" ORDER BY {order_by} LIMIT ? OFFSET ?"
+        )
+        cur.execute(page_sql, [*params, PAGE_SIZE, offset])
         rows = [dict(r) for r in cur.fetchall()]
 
         videos = []
@@ -99,21 +156,22 @@ def create_app(db_path: Path | None = None) -> Flask:
             v["first_seen"] = min(
                 (s["first_seen_date"] for s in srcs if s["first_seen_date"]), default=None
             )
-
-            src_names = {s["source"] for s in srcs}
-            if source == "vudu" and src_names != {"vudu"}:
-                continue
-            if source == "movies_anywhere" and src_names != {"movies_anywhere"}:
-                continue
-            if source == "both" and src_names != {"vudu", "movies_anywhere"}:
-                continue
-
-            if not show_revoked and v["all_revoked"]:
-                continue
-
             videos.append(v)
 
         conn.close()
+
+        # Pagination info
+        showing_from = offset + 1 if videos else 0
+        showing_to = offset + len(videos)
+        pagination = {
+            "page": page,
+            "total_pages": total_pages,
+            "result_count": result_count,
+            "showing_from": showing_from,
+            "showing_to": showing_to,
+            "has_prev": page > 1,
+            "has_next": page < total_pages,
+        }
 
         base_params = {}
         if q:
@@ -136,6 +194,7 @@ def create_app(db_path: Path | None = None) -> Flask:
                 new_sort = col_asc
             else:
                 new_sort = col_desc if col == "year" else col_asc
+            # Reset to page 1 on sort change
             p = {**base_params, "sort": new_sort}
             return "&".join(f"{k}={v}" for k, v in p.items())
 
@@ -146,11 +205,16 @@ def create_app(db_path: Path | None = None) -> Flask:
                 return Markup(' <span class="sort-arrow">&#9660;</span>')
             return Markup("")
 
+        def page_qs(target_page):
+            p = {**base_params, "sort": sort, "page": target_page}
+            return "&".join(f"{k}={v}" for k, v in p.items())
+
         return render_template(
             "index.html",
             videos=videos, q=q, source_filter=source, quality=quality_filter,
             type_filter=type_filter, show_revoked=show_revoked, stats=stats,
             sort=sort, sort_qs=sort_qs, sort_arrow=sort_arrow,
+            pagination=pagination, page_qs=page_qs,
         )
 
     return app

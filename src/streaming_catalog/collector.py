@@ -135,6 +135,8 @@ def collect_via_selenium(
     opts.add_argument(f"--user-data-dir={str(profile_dir)}")
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-blink-features=AutomationControlled")
+    opts.add_argument("--no-first-run")
+    opts.add_argument("--no-default-browser-check")
 
     log.info("Opening Chrome with profile: %s", profile_dir)
     try:

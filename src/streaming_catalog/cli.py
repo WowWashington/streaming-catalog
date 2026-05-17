@@ -53,6 +53,8 @@ def _chrome_options():
     opts.add_argument(f"--user-data-dir={str(profile_dir)}")
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-blink-features=AutomationControlled")
+    opts.add_argument("--no-first-run")
+    opts.add_argument("--no-default-browser-check")
     return opts, profile_dir
 
 
@@ -102,10 +104,16 @@ def setup():
     time.sleep(2)
     driver.execute_script("window.open('https://moviesanywhere.com/login', '_blank');")
 
+    click.echo("Chrome is open. Log in to both services in the browser tabs.")
+    click.echo("This terminal will wait until you close Chrome.")
+    click.echo()
+
     # Wait for user to close Chrome
     while True:
         try:
-            _ = driver.current_url
+            _ = driver.window_handles
+            if not _:
+                break
         except Exception:
             break
         time.sleep(1)
@@ -222,7 +230,9 @@ def login():
     click.echo("Waiting... close Chrome when done.")
     while True:
         try:
-            _ = driver.current_url
+            handles = driver.window_handles
+            if not handles:
+                break
         except Exception:
             break
         time.sleep(1)
