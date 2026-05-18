@@ -38,10 +38,28 @@ def resolve_chrome_profile() -> Path:
 
 
 def resolve_db_path() -> Path:
-    """Resolve the SQLite database path."""
+    """
+    Resolve the SQLite database path.
+
+    Resolution order:
+      1. STREAMING_CATALOG_DB env var (explicit override)
+      2. ~/.streaming-catalog/data/catalog.db if it exists (current default)
+      3. ./data/catalog.db if it exists (legacy cwd-relative default — kept
+         working so existing installs aren't broken by the move)
+      4. ~/.streaming-catalog/data/catalog.db (new path, will be created)
+    """
     if env := os.environ.get("STREAMING_CATALOG_DB"):
         return Path(env)
-    return Path.cwd() / "data" / "catalog.db"
+
+    home_default = user_config_dir() / "data" / "catalog.db"
+    if home_default.exists():
+        return home_default
+
+    legacy_local = Path.cwd() / "data" / "catalog.db"
+    if legacy_local.exists():
+        return legacy_local
+
+    return home_default
 
 
 def resolve_data_dir() -> Path:

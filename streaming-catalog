@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Wrapper so you can run `./streaming-catalog ...` from the repo root without
+# needing the package on your PATH. Uses .venv/ if present, otherwise the
+# system python3 (which must have the package installed).
+set -e
+DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -x "$DIR/.venv/bin/python3" ]; then
+    exec "$DIR/.venv/bin/python3" -m streaming_catalog "$@"
+elif [ -x "$DIR/.venv/Scripts/python.exe" ]; then
+    exec "$DIR/.venv/Scripts/python.exe" -m streaming_catalog "$@"
+else
+    exec python3 -m streaming_catalog "$@"
+fi
