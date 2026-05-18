@@ -4,9 +4,9 @@
 
 ## Project Overview
 
-**StreamingCatalog** — a distributable, cross-platform tool that catalogs a user's owned movies and TV from **Fandango at Home** (Vudu) and **Movies Anywhere** into a local SQLite database with full-text search and a Flask web UI.
+**StreamingCatalog** — a distributable, cross-platform tool that catalogs a user's owned movies and TV from **Fandango at Home** (Vudu), **Movies Anywhere**, and **Google Play Movies** into a local SQLite database with full-text search and a Flask web UI.
 
-This is the **public, GitHub-distributable** strip-down of the user's personal **HomeProjects** project. HomeProjects remains the canonical personal instance (with Google Play scraping, launchd cron, Portal integration). StreamingCatalog is what other people use.
+As of 2026-05-18 this is also the user's **personal** instance — the previous separate HomeProjects project was merged in (Google Play scraper ported, household.db migrated to ./data/catalog.db) and retired to `~/Projects/HomeProjects-archived/`. There is no longer a "private fork" — public improvements and personal usage share the same codebase. Personal customizations stay in gitignored files (`.env`, `data/`, `chrome-profile/`, the launchd plists which live in `~/Library/LaunchAgents/` rather than the repo).
 
 - **Language/Stack**: Python 3.9+ (Click CLI, Flask, Selenium, BeautifulSoup, SQLite FTS5)
 - **Repo**: https://github.com/WowWashington/streaming-catalog (public)
@@ -52,6 +52,7 @@ StreamingCatalog/
 │   │   ├── __init__.py
 │   │   ├── vudu.py                 # apicache.vudu.com metadata scraper
 │   │   ├── movies_anywhere.py      # MA JSON-LD per-movie page scraper
+│   │   ├── google_play.py          # GP detail-page (itemprop) metadata scraper
 │   │   └── sync.py                 # orchestrator + dedup (year-tolerant) + revocation
 │   └── search/
 │       ├── app.py                  # Flask app factory + FTS query sanitizer + pagination
@@ -192,9 +193,12 @@ fd9426b initial scaffold
 ## Current Status
 
 **Last updated**: 2026-05-18
-**State**: Stable — v0.1.0 release-ready, repo is public on GitHub
-**Recent changes**: Iteratively addressed all three tiers of code review findings (critical / important / nice-to-have). Final layout is project-local: data, Chrome profile, and `.env` all live inside the project directory you cloned (or wherever you cd before running `setup`), gitignored, so the whole library lives in one folder you can back up as a unit. Added wrapper scripts (`./streaming-catalog`, `streaming-catalog.bat`) to eliminate PATH friction.
+**State**: Stable — v0.1.0 release-ready, repo is public on GitHub, merged with HomeProjects
+**Recent changes**:
+- Merged the personal HomeProjects fork into the public StreamingCatalog: ported the Google Play Movies scraper + collector JS, relaxed the schema CHECK constraint to allow `google_play`, extended the search UI stats and source filter to three services, added a third login tab to `setup`/`login` for Google Play, migrated `household.db` to `./data/catalog.db` (859 unique videos across all three services).
+- Replaced HomeProjects launchd services with `com.streaming-catalog.{sync,search}` at `~/Library/LaunchAgents/`. Logs at `~/Library/Logs/streaming-catalog/`. Search runs on port 5858 by default, KeepAlive=true; weekly sync runs Sunday 3 AM.
+- HomeProjects folder archived to `~/Projects/HomeProjects-archived/`. No active code there.
 **Next steps**:
-- Optional: port select improvements back to HomeProjects (year-tolerant dedup, FTS sanitization, pagination, mark_missing_as_removed Python-diff fix, hover-zoom posters, stats breakdown)
-- Optional: write unit tests for the parsers and dedup logic
+- Optional: write unit tests for the parsers and dedup logic (the test directory is empty)
 - Optional: announce via the drafted LinkedIn post at `docs/linkedin-post.md`
+- When confident the merge is complete, delete `~/Projects/HomeProjects-archived/` (kept around as a safety net for now)
