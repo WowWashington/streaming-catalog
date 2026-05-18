@@ -86,24 +86,30 @@ def create_app(db_path: Path | None = None) -> Flask:
                FROM video_sources WHERE is_active=1
                GROUP BY video_id"""
         )
-        vudu_only = ma_only = both = 0
+        # Per-service exclusive counts plus multi-source counts. Tracks any
+        # combination of {vudu, movies_anywhere, google_play}.
+        vudu_only = ma_only = gp_only = 0
+        on_multiple = 0  # owned on 2+ services
         for (srcs,) in cur.fetchall():
             parts = set(srcs.split(",")) if srcs else set()
-            if "vudu" in parts and "movies_anywhere" in parts:
-                both += 1
+            if len(parts) >= 2:
+                on_multiple += 1
             elif "vudu" in parts:
                 vudu_only += 1
             elif "movies_anywhere" in parts:
                 ma_only += 1
+            elif "google_play" in parts:
+                gp_only += 1
 
         cur.execute("SELECT COUNT(*) FROM video_sources WHERE is_active=0")
         revoked = cur.fetchone()[0]
 
         stats = {
             "total": total,
-            "both": both,
+            "on_multiple": on_multiple,
             "vudu_only": vudu_only,
             "ma_only": ma_only,
+            "gp_only": gp_only,
             "revoked": revoked,
         }
 
@@ -126,21 +132,24 @@ def create_app(db_path: Path | None = None) -> Flask:
             where_clauses.append("v.type = ?")
             params.append(type_filter)
 
-        # Source filter — pushed into SQL via subquery on video_sources
-        if source == "vudu":
+        # Source filter — pushed into SQL via subquery on video_sources.
+        # "*_only" filters surface titles exclusive to one service; "multi"
+        # surfaces titles owned on 2+ services.
+        _only = {
+            "vudu": "vudu",
+            "movies_anywhere": "movies_anywhere",
+            "google_play": "google_play",
+        }
+        if source in _only:
             where_clauses.append(
                 "v.id IN (SELECT video_id FROM video_sources WHERE is_active=1 "
-                "GROUP BY video_id HAVING GROUP_CONCAT(DISTINCT source) = 'vudu')"
+                "GROUP BY video_id HAVING COUNT(DISTINCT source) = 1 "
+                f"AND MAX(source) = '{_only[source]}')"
             )
-        elif source == "movies_anywhere":
+        elif source == "multi":
             where_clauses.append(
                 "v.id IN (SELECT video_id FROM video_sources WHERE is_active=1 "
-                "GROUP BY video_id HAVING GROUP_CONCAT(DISTINCT source) = 'movies_anywhere')"
-            )
-        elif source == "both":
-            where_clauses.append(
-                "v.id IN (SELECT video_id FROM video_sources WHERE is_active=1 "
-                "GROUP BY video_id HAVING COUNT(DISTINCT source) = 2)"
+                "GROUP BY video_id HAVING COUNT(DISTINCT source) >= 2)"
             )
 
         # Revoked filter — hide videos with no active sources unless requested

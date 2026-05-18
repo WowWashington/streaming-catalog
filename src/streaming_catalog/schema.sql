@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS videos (
 CREATE TABLE IF NOT EXISTS video_sources (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     video_id INTEGER REFERENCES videos(id) ON DELETE CASCADE,
-    source TEXT NOT NULL CHECK(source IN ('vudu','movies_anywhere')),
+    source TEXT NOT NULL CHECK(source IN ('vudu','movies_anywhere','google_play')),
     source_id TEXT NOT NULL,
     purchased_date TEXT,
     purchase_price REAL,

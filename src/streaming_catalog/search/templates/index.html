@@ -21,6 +21,7 @@
  a.badge:hover { opacity: 0.8; }
  .vudu { background: #2962ff; color: white; }
  .ma { background: #6a1b9a; color: white; }
+ .gp { background: #c2185b; color: white; }
  .quality { background: #2e7d32; color: white; }
  .type-tv { background: #ef6c00; color: white; }
  .revoked-row { opacity: 0.55; }
@@ -44,7 +45,7 @@
 <body>
 <header>
  <h1>Video Library</h1>
- <span class="stats">{{ stats.total }} unique titles · {{ stats.both }} on both · {{ stats.vudu_only }} Vudu only · {{ stats.ma_only }} Movies Anywhere only{% if stats.revoked %} · {{ stats.revoked }} revoked{% endif %}</span>
+ <span class="stats">{{ stats.total }} unique titles · {{ stats.on_multiple }} on multiple services · {{ stats.vudu_only }} Vudu only · {{ stats.ma_only }} Movies Anywhere only · {{ stats.gp_only }} Google Play only{% if stats.revoked %} · {{ stats.revoked }} revoked{% endif %}</span>
 </header>
 <form>
  <input type="text" name="q" placeholder="Search title, description, director, genre..." value="{{ q }}" autofocus>
@@ -58,7 +59,8 @@
   <option value="">All sources</option>
   <option value="vudu" {% if source_filter=='vudu' %}selected{% endif %}>Vudu only</option>
   <option value="movies_anywhere" {% if source_filter=='movies_anywhere' %}selected{% endif %}>Movies Anywhere only</option>
-  <option value="both" {% if source_filter=='both' %}selected{% endif %}>On both</option>
+  <option value="google_play" {% if source_filter=='google_play' %}selected{% endif %}>Google Play only</option>
+  <option value="multi" {% if source_filter=='multi' %}selected{% endif %}>On 2+ services</option>
  </select>
  <select name="quality">
   <option value="">Any quality</option>
@@ -110,8 +112,10 @@
      {% for s in v.sources %}
        {% if s.source == 'vudu' %}
        <a href="https://athome.fandango.com/content/browse/details/movie/{{ s.source_id }}" target="_blank" class="badge vudu">Vudu</a>
-       {% else %}
+       {% elif s.source == 'movies_anywhere' %}
        <a href="https://moviesanywhere.com/movie/{{ s.source_id }}" target="_blank" class="badge ma">MA</a>
+       {% elif s.source == 'google_play' %}
+       <a href="https://play.google.com/store/movies/details?id={{ s.source_id }}" target="_blank" class="badge gp">GP</a>
        {% endif %}
        {% if not s.is_active %}<span class="badge revoked-badge" title="Removed {{ s.removed_date }}">revoked</span>{% endif %}
      {% endfor %}

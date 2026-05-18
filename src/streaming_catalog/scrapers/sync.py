@@ -7,7 +7,7 @@ from pathlib import Path
 
 from streaming_catalog.config import resolve_db_path, resolve_data_dir
 from streaming_catalog.db import get_connection, rebuild_fts
-from streaming_catalog.scrapers import vudu, movies_anywhere
+from streaming_catalog.scrapers import vudu, movies_anywhere, google_play
 
 log = logging.getLogger(__name__)
 
@@ -107,7 +107,7 @@ def run_sync(services: list[str] | None = None, progress_factory=None) -> dict:
     returns (progress_callback, finish_callback). Used for CLI progress bars.
     """
     if services is None:
-        services = ["vudu", "ma"]
+        services = ["vudu", "ma", "gp"]
 
     db_path = resolve_db_path()
     data_dir = resolve_data_dir()
@@ -137,6 +137,18 @@ def run_sync(services: list[str] | None = None, progress_factory=None) -> dict:
         except FileNotFoundError as e:
             log.warning("Skipping Movies Anywhere: %s", e)
             results["movies_anywhere"] = {"skipped": str(e)}
+
+    if "gp" in services:
+        gp_file = data_dir / "google_play_ids.txt"
+        try:
+            entries = google_play.load_ids_from_file(gp_file)
+            cb, finish = (progress_factory("Google Play", len(entries))
+                          if progress_factory else (None, lambda: None))
+            results["google_play"] = google_play.scrape(entries, db_path, progress_callback=cb)
+            finish()
+        except FileNotFoundError as e:
+            log.warning("Skipping Google Play: %s", e)
+            results["google_play"] = {"skipped": str(e)}
 
     conn = get_connection(db_path)
     merges = dedupe_videos(conn)

@@ -154,6 +154,7 @@ def setup():
     click.echo("Next: opening Chrome with two tabs to log in.")
     click.echo("  Tab 1: Fandango at Home")
     click.echo("  Tab 2: Movies Anywhere")
+    click.echo("  Tab 3: Google Play Movies (optional — close if you don't use it)")
     click.echo()
 
     opts, _ = _chrome_options()
@@ -162,8 +163,10 @@ def setup():
         driver.get("https://athome.fandango.com/content/account/login")
         time.sleep(2)
         driver.execute_script("window.open('https://moviesanywhere.com/login', '_blank');")
+        time.sleep(1)
+        driver.execute_script("window.open('https://play.google.com/movies', '_blank');")
 
-        click.echo("Chrome is open. Log in to both services in the browser tabs.")
+        click.echo("Chrome is open. Log in to each service in its tab.")
         click.echo("This terminal will wait until you close Chrome.")
         click.echo()
 
@@ -197,7 +200,7 @@ def setup():
 # ─── Update (collect + sync) ──────────────────────────────────────────────────
 
 @main.command()
-@click.option("--service", type=click.Choice(["vudu", "ma", "all"]), default="all",
+@click.option("--service", type=click.Choice(["vudu", "ma", "gp", "all"]), default="all",
               help="Which service to update")
 @click.option("--timeout", default=120, help="Timeout per service in seconds")
 def update(service, timeout):
@@ -206,7 +209,7 @@ def update(service, timeout):
     from streaming_catalog.scrapers.sync import run_sync
 
     _ensure_db()
-    services = ["vudu", "ma"] if service == "all" else [service]
+    services = ["vudu", "ma", "gp"] if service == "all" else [service]
 
     # Step 1: Collect
     click.echo("Step 1/2: Collecting library from Chrome...")
@@ -310,9 +313,10 @@ def login():
     webdriver, _ = _ensure_selenium()
     opts, _ = _chrome_options()
 
-    click.echo("Opening Chrome — log in to both services, then close the window:")
+    click.echo("Opening Chrome — log in to each service, then close the window:")
     click.echo("  1. https://athome.fandango.com")
     click.echo("  2. https://moviesanywhere.com")
+    click.echo("  3. https://play.google.com/movies (optional)")
     click.echo()
 
     driver = webdriver.Chrome(options=opts)
@@ -320,6 +324,8 @@ def login():
         driver.get("https://athome.fandango.com/content/account/login")
         time.sleep(2)
         driver.execute_script("window.open('https://moviesanywhere.com/login', '_blank');")
+        time.sleep(1)
+        driver.execute_script("window.open('https://play.google.com/movies', '_blank');")
 
         click.echo("Waiting... close Chrome when done.")
         _wait_for_browser_close(driver)
@@ -333,7 +339,7 @@ def login():
 
 
 @main.command()
-@click.option("--service", type=click.Choice(["vudu", "ma", "all"]), default="all")
+@click.option("--service", type=click.Choice(["vudu", "ma", "gp", "all"]), default="all")
 @click.option("--timeout", default=120)
 def collect(service, timeout):
     """Collect library IDs from Chrome (without syncing metadata)."""
@@ -344,7 +350,7 @@ def collect(service, timeout):
 
     try:
         results = collect_via_selenium(
-            services=["vudu", "ma"] if service == "all" else [service],
+            services=["vudu", "ma", "gp"] if service == "all" else [service],
             timeout=timeout,
         )
     except RuntimeError as e:
@@ -357,14 +363,14 @@ def collect(service, timeout):
 
 
 @main.command()
-@click.option("--service", type=click.Choice(["vudu", "ma", "all"]), default="all")
+@click.option("--service", type=click.Choice(["vudu", "ma", "gp", "all"]), default="all")
 def sync(service):
     """Fetch metadata for collected IDs and rebuild search index."""
     from streaming_catalog.scrapers.sync import run_sync
 
     _ensure_db()
     results = run_sync(
-        services=["vudu", "ma"] if service == "all" else [service],
+        services=["vudu", "ma", "gp"] if service == "all" else [service],
         progress_factory=_progress_factory,
     )
 

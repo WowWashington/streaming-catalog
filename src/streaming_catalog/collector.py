@@ -23,6 +23,7 @@ log = logging.getLogger(__name__)
 VUDU_MOVIES_URL = "https://athome.fandango.com/content/browse/mymovies"
 VUDU_TV_URL = "https://athome.fandango.com/content/browse/mytv"
 MA_URL = "https://moviesanywhere.com/my-movies"
+GP_URL = "https://play.google.com/movies?hl=en_US"
 
 VUDU_SCROLL_JS = """
 return new Promise(resolve => {
@@ -106,6 +107,40 @@ return new Promise(resolve => {
 });
 """
 
+GP_COLLECT_JS = """
+return new Promise(resolve => {
+  // Google Play library page renders all owned movies in the DOM under a
+  // <section> containing the "My Movies" heading. No virtual scroll needed.
+  // Wait for the Movies & TV tab to be active, then click it if needed.
+  const moviesTab = [...document.querySelectorAll('[role="tab"], a')].find(
+    el => el.textContent.trim() === 'Movies & TV'
+  );
+  if (moviesTab && !moviesTab.getAttribute('aria-selected')) {
+    moviesTab.click();
+  }
+
+  setTimeout(() => {
+    // Find the My Movies section
+    const span = [...document.querySelectorAll('span')].find(
+      s => s.textContent.trim() === 'My Movies'
+    );
+    if (!span) { resolve([]); return; }
+    let section = span;
+    for (let i = 0; i < 10; i++) {
+      section = section.parentElement;
+      if (section.tagName === 'SECTION') break;
+    }
+    const links = section.querySelectorAll('a[href*="/store/movies/details"]');
+    const entries = [...links].map(a => {
+      const href = a.getAttribute('href');
+      const match = href.match(/details\\/([^?]+)\\?id=(.+)/);
+      return match ? match[2] + '\\t' + match[1] : null;
+    }).filter(Boolean);
+    resolve(entries);
+  }, 3000);
+});
+"""
+
 
 def _restrict_perms(path: Path) -> None:
     """
@@ -129,7 +164,7 @@ def collect_via_selenium(
     Returns counts dict and writes ID/slug files to the data directory.
     """
     if services is None:
-        services = ["vudu", "ma"]
+        services = ["vudu", "ma", "gp"]
 
     try:
         from selenium import webdriver
@@ -179,6 +214,9 @@ def collect_via_selenium(
         if "ma" in services:
             results["movies_anywhere"] = _collect_ma(driver, data_dir)
 
+        if "gp" in services:
+            results["google_play"] = _collect_gp(driver, data_dir)
+
         return results
     finally:
         driver.quit()
@@ -222,3 +260,19 @@ def _collect_ma(driver, data_dir: Path) -> int:
         log.warning("MA collected 0 slugs — session may have expired")
 
     return len(slugs)
+
+
+def _collect_gp(driver, data_dir: Path) -> int:
+    """Collect Google Play (gid, slug) tuples written as tab-separated lines."""
+    log.info("Loading Google Play library page")
+    driver.get(GP_URL)
+    time.sleep(5)
+    entries = driver.execute_script(GP_COLLECT_JS) or []
+
+    if entries:
+        (data_dir / "google_play_ids.txt").write_text("\n".join(entries) + "\n")
+        log.info("Saved %d Google Play entries", len(entries))
+    else:
+        log.warning("Google Play collected 0 entries — session may have expired")
+
+    return len(entries)
