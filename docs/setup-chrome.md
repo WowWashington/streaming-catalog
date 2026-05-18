@@ -4,11 +4,11 @@ StreamingCatalog uses a **dedicated Chrome profile** — separate from your norm
 
 ## Where the profile lives
 
-By default: `~/.streaming-catalog/chrome-profile/`
+By default: `./chrome-profile/` inside your StreamingCatalog project directory.
 
-That's the same on macOS, Windows, and Linux. The directory is created on first `streaming-catalog setup`. The tool sets permissions to `0700` on POSIX systems so other local users on a shared machine can't read your session cookies.
+That's the same on macOS, Windows, and Linux. The directory is created on first `streaming-catalog setup`. The whole `chrome-profile/` folder is gitignored, so it never gets committed.
 
-You can override the location with an env var:
+You can override the location with an env var if you'd rather keep the profile elsewhere:
 
 ```bash
 STREAMING_CATALOG_CHROME_PROFILE=/some/other/path

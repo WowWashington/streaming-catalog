@@ -28,60 +28,49 @@ A few things to know upfront:
 
 ## Quick Start
 
-You have three install options — pick whichever fits how you usually run Python tools.
-
-### Option 1: pipx (recommended — global command, no PATH fuss)
-
 ```bash
-# Install pipx first if you don't have it
-# macOS:  brew install pipx
-# Linux:  sudo apt install pipx     (or your distro's equivalent)
-# Windows: python -m pip install --user pipx
-
-# Then install StreamingCatalog itself
-pipx install "streaming-catalog[all] @ git+https://github.com/WowWashington/streaming-catalog.git"
-
-# Use it from anywhere
-streaming-catalog setup
-streaming-catalog update
-streaming-catalog search
-```
-
-### Option 2: Zero install — wrapper script from the repo
-
-```bash
+# Clone the repo
 git clone https://github.com/WowWashington/streaming-catalog.git
 cd streaming-catalog
+
+# Install dependencies (optionally inside a venv first)
 pip install ".[all]"
 
-./streaming-catalog setup     # macOS/Linux
-.\streaming-catalog.bat setup # Windows
+# Run the three lifecycle commands — all from inside the streaming-catalog/ folder
+./streaming-catalog setup     # one-time: creates DB + opens Chrome for login
+./streaming-catalog update    # collects library + fetches metadata
+./streaming-catalog search    # opens the web UI in your browser
 ```
 
-The wrapper scripts in the repo root let you run the tool without messing with PATH. They work whether you used a venv or a plain `pip install`.
+On Windows use `streaming-catalog.bat` in place of `./streaming-catalog`.
 
-### Option 3: Virtual environment (for developers)
+The wrapper script in the repo root means you never need to fight with PATH or activate a venv to run commands — just `./streaming-catalog <command>` from inside the project directory.
+
+### Where everything lives
+
+Everything StreamingCatalog needs is bundled inside the project directory you cloned:
+
+```
+streaming-catalog/
+├── chrome-profile/          # your dedicated Chrome session (gitignored)
+├── data/                    # SQLite DB + collected ID files (gitignored)
+├── .env                     # your port preference (gitignored)
+└── ... (the code)
+```
+
+If you want a different layout (multiple catalogs, shared DB elsewhere, etc.) every path can be overridden via env vars — see [Configuration](#configuration) below.
+
+To refresh later (e.g. weekly), just `cd` into the folder and run `./streaming-catalog update` again.
+
+### Alternative installs
+
+If you'd rather have `streaming-catalog` as a system-wide command instead of `./streaming-catalog`, you can install with **pipx**:
 
 ```bash
-git clone https://github.com/WowWashington/streaming-catalog.git
-cd streaming-catalog
-python3 -m venv .venv
-source .venv/bin/activate            # macOS/Linux
-# .venv\Scripts\activate              # Windows PowerShell
-pip install -e ".[all]"
-
-streaming-catalog setup
+pipx install "streaming-catalog[all] @ git+https://github.com/WowWashington/streaming-catalog.git"
 ```
 
-That's it. After any option above, you run three commands total to be up and running:
-
-```bash
-streaming-catalog setup     # one-time: creates DB + opens Chrome for login
-streaming-catalog update    # collects library + fetches metadata
-streaming-catalog search    # opens the web UI in your browser
-```
-
-To refresh later (e.g. weekly), just run `streaming-catalog update` again.
+The catch: pipx installs the *command* globally, but the *data* still goes in whatever directory you're in when you run `streaming-catalog setup`. So pick a folder to hold your catalog and `cd` there before running setup. Treat that folder like a git working tree — everything for one library lives in it.
 
 ## Commands
 
@@ -96,27 +85,36 @@ To refresh later (e.g. weekly), just run `streaming-catalog update` again.
 | `collect` | Just harvest library IDs (no metadata) |
 | `sync` | Just fetch metadata for already-collected IDs |
 
-## Where your data lives
+## Configuration
 
-By default, everything goes under `~/.streaming-catalog/`:
+All paths and the search port can be overridden via environment variables (or via the `.env` file that `setup` writes in your project directory).
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `STREAMING_CATALOG_DB` | `./data/catalog.db` | SQLite database path |
+| `STREAMING_CATALOG_CHROME_PROFILE` | `./chrome-profile` | Chrome user-data dir |
+| `STREAMING_CATALOG_PORT` | `5858` | Search UI port (set interactively by `setup`) |
+
+A typical project layout after `setup` + `update`:
 
 ```
-~/.streaming-catalog/
-├── chrome-profile/      # Your dedicated Chrome profile (session cookies)
-├── config.env           # Per-user config (port, etc.) saved by `setup`
-└── data/
-    ├── catalog.db       # SQLite database with FTS search
-    ├── vudu_ids.txt     # Last-collected Vudu content IDs
-    ├── vudu_tv_ids.txt  # Last-collected Vudu TV section IDs
-    └── ma_slugs.txt     # Last-collected Movies Anywhere slugs
+streaming-catalog/
+├── chrome-profile/          # Your dedicated Chrome session (gitignored)
+├── data/
+│   ├── catalog.db           # SQLite database with FTS search
+│   ├── vudu_ids.txt         # Last-collected Vudu content IDs
+│   ├── vudu_tv_ids.txt      # Last-collected Vudu TV section IDs
+│   └── ma_slugs.txt         # Last-collected Movies Anywhere slugs
+├── .env                     # Port preference saved by `setup`
+└── ... (the code)
 ```
 
-You can override the DB location with `STREAMING_CATALOG_DB=/some/path/catalog.db`.
+Want to back up your library? Just back up the whole folder.
 
 ## Privacy
 
-- **All data is stored locally** in your home directory
-- **Your login lives in a Chrome profile** at `~/.streaming-catalog/chrome-profile` — same encryption as your normal Chrome, set to mode 0700 on POSIX systems
+- **All data is stored locally** inside your project folder
+- **Your login lives in a Chrome profile** at `./chrome-profile/` next to the code — same encryption as your normal Chrome
 - **No credentials are stored** anywhere by this tool itself
 - **Nothing is uploaded** to any third party
 

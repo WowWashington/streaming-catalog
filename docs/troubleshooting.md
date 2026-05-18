@@ -9,7 +9,7 @@ Chrome can only have one process using a profile at a time.
 **If Chrome is closed but you still see this**: A previous run may have crashed and left a lock file. Remove it:
 
 ```bash
-rm ~/.streaming-catalog/chrome-profile/SingletonLock
+rm ./chrome-profile/SingletonLock      # from inside the project folder
 ```
 
 ## "Collected 0 items"
@@ -80,4 +80,4 @@ streaming-catalog setup
 streaming-catalog update
 ```
 
-Your Chrome session in `~/.streaming-catalog/chrome-profile` is preserved, so you won't need to log in again.
+Your Chrome session in `./chrome-profile/` is preserved, so you won't need to log in again.

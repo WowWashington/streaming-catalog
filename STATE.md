@@ -75,7 +75,7 @@ StreamingCatalog/
 
 1. **Dedicated Chrome profile, not the user's main one.** Chrome 148+ blocks Selenium from attaching to a profile that's also being used as the user's everyday browser. We sidestep this by using a fresh profile at `~/.streaming-catalog/chrome-profile/`. User logs in once via `setup`; sessions persist across runs.
 
-2. **Local-only data, home-dir defaults.** All state lives under `~/.streaming-catalog/` (chrome-profile, config.env, data/). DB path resolution is just two cases: `STREAMING_CATALOG_DB` env var or the home-dir default. No cwd-relative fallback.
+2. **Local-only data, project-local defaults.** All state lives inside the project directory: `./chrome-profile/`, `./data/`, `./.env`. DB path resolution is just two cases: `STREAMING_CATALOG_DB` env var or the cwd-relative default. The "treat the folder like a git working tree" mental model — back up the folder, get everything.
 
 3. **Three install paths in the README, ordered by friction**: `pipx install` (recommended global), `git clone + ./streaming-catalog` (zero install via wrapper script), venv (developers). The wrappers auto-detect a local `.venv/` if present, fall back to system `python3 -m streaming_catalog`.
 
@@ -101,11 +101,11 @@ All optional. Resolution order: CLI flags > env vars > `~/.streaming-catalog/con
 
 | Var | Default | Purpose |
 |-----|---------|---------|
-| `STREAMING_CATALOG_DB` | `~/.streaming-catalog/data/catalog.db` | DB path override |
-| `STREAMING_CATALOG_CHROME_PROFILE` | `~/.streaming-catalog/chrome-profile` | Profile dir override |
+| `STREAMING_CATALOG_DB` | `./data/catalog.db` | DB path override |
+| `STREAMING_CATALOG_CHROME_PROFILE` | `./chrome-profile` | Profile dir override |
 | `STREAMING_CATALOG_PORT` | `5858` | Search UI port (set interactively by `setup`) |
 
-**Never committed**: anything under `~/.streaming-catalog/` (it's in the user's home dir, not the repo). The repo's `.gitignore` excludes `data/`, `*.db`, `.env`, build artifacts.
+**Never committed**: `.gitignore` excludes `data/`, `chrome-profile/`, `*.db`, `.env`, build artifacts. The whole "user state" footprint lives in `data/`, `chrome-profile/`, and `.env`, all gitignored — so a `git status` after a full setup+update is clean.
 
 ---
 
@@ -193,7 +193,7 @@ fd9426b initial scaffold
 
 **Last updated**: 2026-05-18
 **State**: Stable — v0.1.0 release-ready, repo is public on GitHub
-**Recent changes**: Iteratively addressed all three tiers of code review findings (critical / important / nice-to-have); reorganized data layout to `~/.streaming-catalog/` so commands work from any directory; added wrapper scripts and pipx-first README to eliminate the "command not found after pip install" friction for new users; user's local test data was wiped after backward-compat fallback was removed
+**Recent changes**: Iteratively addressed all three tiers of code review findings (critical / important / nice-to-have). Final layout is project-local: data, Chrome profile, and `.env` all live inside the project directory you cloned (or wherever you cd before running `setup`), gitignored, so the whole library lives in one folder you can back up as a unit. Added wrapper scripts (`./streaming-catalog`, `streaming-catalog.bat`) to eliminate PATH friction.
 **Next steps**:
 - Optional: port select improvements back to HomeProjects (year-tolerant dedup, FTS sanitization, pagination, mark_missing_as_removed Python-diff fix, hover-zoom posters, stats breakdown)
 - Optional: write unit tests for the parsers and dedup logic

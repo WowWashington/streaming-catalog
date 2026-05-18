@@ -113,7 +113,7 @@ def main(ctx, verbose, db_path):
 def setup():
     """First-time setup: create database and log in to streaming services."""
     import shutil
-    from streaming_catalog.config import user_config_dir, user_config_file
+    from streaming_catalog.config import user_config_file
 
     webdriver, Options = _ensure_selenium()
 
@@ -127,16 +127,10 @@ def setup():
     click.echo("(Pick something else if 5858 is already in use on your machine.)")
     port = click.prompt("Port for search UI", default=resolve_port(), type=int)
 
-    # Persist port to user config so future runs use it. Write to a tmp file
-    # then rename so we never leave a half-written config behind.
-    cfg_dir = user_config_dir()
-    cfg_dir.mkdir(parents=True, exist_ok=True)
-    if os.name == "posix":
-        try:
-            cfg_dir.chmod(0o700)
-        except OSError:
-            pass
+    # Persist port to the project-local .env so future runs use it.
+    # Atomic write: tmp file + rename, with 0600 perms on POSIX.
     config_file = user_config_file()
+    config_file.parent.mkdir(parents=True, exist_ok=True)
     config_lines = []
     if config_file.exists():
         config_lines = [

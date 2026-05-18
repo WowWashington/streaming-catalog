@@ -1,4 +1,5 @@
 data/
+chrome-profile/
 *.db
 __pycache__/
 *.pyc
