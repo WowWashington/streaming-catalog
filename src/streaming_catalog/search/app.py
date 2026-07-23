@@ -152,8 +152,13 @@ def create_app(db_path: Path | None = None) -> Flask:
                 "GROUP BY video_id HAVING COUNT(DISTINCT source) >= 2)"
             )
 
-        # Revoked filter — hide videos with no active sources unless requested
-        if not show_revoked:
+        if show_revoked:
+            # Filter TO videos that have at least one revoked source entry
+            where_clauses.append(
+                "v.id IN (SELECT video_id FROM video_sources WHERE is_active=0)"
+            )
+        else:
+            # Hide videos with no active sources at all
             where_clauses.append(
                 "v.id IN (SELECT video_id FROM video_sources WHERE is_active=1)"
             )
@@ -189,6 +194,7 @@ def create_app(db_path: Path | None = None) -> Flask:
             srcs = [dict(s) for s in cur.fetchall()]
             v["sources"] = srcs
             v["all_revoked"] = bool(srcs) and all(s["is_active"] == 0 for s in srcs)
+            v["has_revoked"] = any(s["is_active"] == 0 for s in srcs)
             v["first_seen"] = min(
                 (s["first_seen_date"] for s in srcs if s["first_seen_date"]), default=None
             )

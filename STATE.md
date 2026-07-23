@@ -53,7 +53,7 @@ StreamingCatalog/
 │   │   ├── vudu.py                 # apicache.vudu.com metadata scraper
 │   │   ├── movies_anywhere.py      # MA JSON-LD per-movie page scraper
 │   │   ├── google_play.py          # GP detail-page (itemprop) metadata scraper
-│   │   └── sync.py                 # orchestrator + dedup (year-tolerant) + revocation
+│   │   └── sync.py                 # orchestrator + dedup (year-tolerant) + revocation + purge
 │   └── search/
 │       ├── app.py                  # Flask app factory + FTS query sanitizer + pagination
 │       └── templates/index.html    # search UI with poster hover zoom
@@ -76,23 +76,27 @@ StreamingCatalog/
 
 1. **Dedicated Chrome profile, not the user's main one.** Chrome 148+ blocks Selenium from attaching to a profile that's also being used as the user's everyday browser. We sidestep this by using a fresh profile at `~/.streaming-catalog/chrome-profile/`. User logs in once via `setup`; sessions persist across runs.
 
-2. **Local-only data, project-local defaults.** All state lives inside the project directory: `./chrome-profile/`, `./data/`, `./.env`. DB path resolution is just two cases: `STREAMING_CATALOG_DB` env var or the cwd-relative default. The "treat the folder like a git working tree" mental model — back up the folder, get everything.
+2. **Local-only data, project-local defaults.** All state lives inside the project directory: `./chrome-profile/`, `./data/`, `./.env`. DB path resolution is just two cases: `STREAMING_CATALOG_DB` env var or the cwd-relative default.
 
-3. **Three install paths in the README, ordered by friction**: `pipx install` (recommended global), `git clone + ./streaming-catalog` (zero install via wrapper script), venv (developers). The wrappers auto-detect a local `.venv/` if present, fall back to system `python3 -m streaming_catalog`.
+3. **Three install paths in the README, ordered by friction**: `pipx install` (recommended global), `git clone + ./streaming-catalog` (zero install via wrapper script), venv (developers).
 
-4. **Public APIs for metadata, browser for ownership lists.** The Vudu apicache and MA per-movie pages return rich metadata without authentication. Only the "what do I own" list requires the logged-in browser session, because that's the only way to access the user-specific library pages. This keeps the auth surface minimal.
+4. **Public APIs for metadata, browser for ownership lists.** The Vudu apicache and MA per-movie pages return rich metadata without authentication. Only the "what do I own" list requires the logged-in browser session.
 
-5. **MA PageDown trick is required for MA collection.** Movies Anywhere uses an IntersectionObserver-based lazy loader that ignores programmatic `scrollTo()`. The only reliable way to load all items is to dispatch synthetic `KeyboardEvent('keydown', {keyCode: 34})` repeatedly. See `MA_SCROLL_JS` in collector.py. Chrome window must be visible.
+5. **MA PageDown trick is required for MA collection.** Movies Anywhere uses an IntersectionObserver-based lazy loader that ignores programmatic `scrollTo()`. Synthetic `KeyboardEvent('keydown', {keyCode: 34})` dispatched repeatedly via `MA_SCROLL_JS`. Chrome window must be visible.
 
-6. **Year-tolerant dedup.** Metadata sources sometimes disagree on release years (Google's data on Clockwork Orange differs by 1 year between Vudu and MA). The dedup buckets by normalized title, then clusters within each bucket allowing year mismatches of ≤2 years OR a missing year on either side. Films with clearly different years (>2 apart, like "Awakening" 1990 vs 2011) stay separate.
+6. **Year-tolerant dedup.** Metadata sources sometimes disagree on release years. The dedup buckets by normalized title (with trailing `(YYYY)` year suffixes stripped), then clusters within each bucket allowing year mismatches of ≤2 years OR a missing year on either side.
 
-7. **Revocation via Python-side diff, not SQL date filter.** `mark_missing_as_removed` compares the live `seen_ids` set against the DB rows in Python, so a same-day re-run still catches newly-revoked items (a SQL `last_seen_date != today` filter would have excluded items the first run had touched).
+7. **Revocation via Python-side diff, not SQL date filter.** `mark_missing_as_removed` compares the live `seen_ids` set against the DB rows in Python, so a same-day re-run still catches newly-revoked items.
 
-8. **Per-item exception handling in scrape loops.** A single malformed JSON-LD or unexpected actor shape no longer kills the whole sync — the item is logged as failed and the loop continues.
+8. **`purge_superseded_sources()` prevents ID-change false positives.** After every sync, any `is_active=0` source entry is deleted if the same `(video_id, source)` already has an `is_active=1` entry. This handles the case where a service changes a movie's source_id without removing it from your library — the old ID gets marked inactive by `mark_missing_as_removed`, but the new active entry confirms you still own it. Without this step, ID changes show up as spurious revocations.
 
-9. **FTS query sanitization.** User input is tokenized via `re.findall(r"\w+", q)` then per-token prefix-quoted. Punctuation-only or quote-containing queries (`.`, `"`, `foo"bar`) now sanitize cleanly instead of raising sqlite3 OperationalError.
+9. **"Show revoked" is a filter, not a toggle.** When checked, it filters TO videos that have any `is_active=0` source entry (not just videos with no active sources). Makes it a useful "what was removed" view.
 
-10. **Connection lifecycle.** Search handler wraps the request in try/finally so the SQLite connection always closes, even if rendering raises mid-request. Chrome driver is wrapped in try/finally in `setup`/`login`/`collect`.
+10. **Per-item exception handling in scrape loops.** A single malformed JSON-LD or unexpected actor shape no longer kills the whole sync.
+
+11. **FTS query sanitization.** User input tokenized via `re.findall(r"\w+", q)` then per-token prefix-quoted. Punctuation-only queries sanitize cleanly.
+
+12. **Connection lifecycle.** Search handler wraps the request in try/finally. Chrome driver is wrapped in try/finally in `setup`/`login`/`collect`.
 
 ---
 
@@ -106,7 +110,7 @@ All optional. Resolution order: CLI flags > env vars > `~/.streaming-catalog/con
 | `STREAMING_CATALOG_CHROME_PROFILE` | `./chrome-profile` | Profile dir override |
 | `STREAMING_CATALOG_PORT` | `5858` | Search UI port (set interactively by `setup`) |
 
-**Never committed**: `.gitignore` excludes `data/`, `chrome-profile/`, `*.db`, `.env`, build artifacts. The whole "user state" footprint lives in `data/`, `chrome-profile/`, and `.env`, all gitignored — so a `git status` after a full setup+update is clean.
+**Never committed**: `.gitignore` excludes `data/`, `chrome-profile/`, `*.db`, `.env`, build artifacts.
 
 ---
 
@@ -128,7 +132,7 @@ pip install ".[all]"
 
 Lifecycle commands:
 ```bash
-streaming-catalog setup       # one-time: creates DB at ~/.streaming-catalog/data/, opens Chrome with both login tabs, prompts for port
+streaming-catalog setup       # one-time: creates DB, opens Chrome with login tabs, prompts for port
 streaming-catalog update      # collect library + sync metadata (~5-10 min for a typical library)
 streaming-catalog search      # opens http://127.0.0.1:5858 in browser
 streaming-catalog status      # DB stats
@@ -140,65 +144,69 @@ streaming-catalog export      # CSV or JSON dump
 ## What's Complete
 
 - Cross-platform CLI (macOS / Linux / Windows) with 8 commands
-- Selenium-driven collector for Vudu + MA with proven PageDown technique for MA
-- Public-API metadata scrapers (apicache.vudu.com + MA JSON-LD per-movie pages)
+- Selenium-driven collector for Vudu + MA + Google Play
+- Public-API metadata scrapers (apicache.vudu.com, MA JSON-LD, GP itemprop pages)
 - SQLite + FTS5 schema with revocation tracking and `first_seen_date`
-- Year-tolerant cross-service deduplication
-- Flask search UI with pagination, source filters, type/quality filters, sortable columns, poster hover zoom (5× scale-up)
-- Cross-service stats breakdown (unique titles · on both · vudu-only · ma-only)
+- Year-tolerant cross-service deduplication with trailing-year title normalization
+- `purge_superseded_sources()` — prevents ID-change events from appearing as revocations
+- Flask search UI with pagination, source filters, type/quality filters, sortable columns, poster hover zoom
+- "Show revoked" filters TO movies with any revoked source entry (was broken before — showed nothing useful)
+- Revoked sources render as faded badges with removal date tooltip; partial-revoke rows get a red left border
+- Cross-service stats breakdown (unique titles · on multiple · vudu-only · ma-only · gp-only)
 - Per-user config persisted to `~/.streaming-catalog/config.env` (atomic write, 0600)
-- Wrapper scripts (`./streaming-catalog`, `streaming-catalog.bat`) for zero-PATH-setup invocation
-- Optional Docker setup (search UI only — collector needs host Chrome)
+- Wrapper scripts for zero-PATH-setup invocation
+- Optional Docker setup (search UI only)
 - README with three install paths, troubleshooting, scheduling examples
-- Code review pass with critical, important, and nice-to-have tiers all addressed
 - Released MIT-licensed at https://github.com/WowWashington/streaming-catalog
+- launchd services: `com.streaming-catalog.{sync,search}` at `~/Library/LaunchAgents/`; weekly sync Sunday 3 AM, search on port 5858
 
 ---
 
 ## What's In Progress
 
-Nothing actively in progress. Project considered v0.1.0 release-ready.
+Nothing actively in progress.
 
 ---
 
 ## What's NOT Implemented (Future Work)
 
-- **Additional services**: Apple TV, Amazon Video, Plex, Google Play. HomeProjects has a working Google Play scraper that could be ported.
-- **Tests**: `tests/` directory exists in pyproject.toml but is empty. Unit tests for `_build_fts_query`, `dedupe_videos`, `_parse_response`, and the MA JSON-LD parser would be high-value.
-- **Watched-status tracking**: services don't expose this, but the user could mark it manually in the UI.
-- **Rental availability cross-reference**: "what can I rent that I don't own" via JustWatch or similar.
-- **GitHub Actions CI**: lint + smoke tests on push.
-- **Headless login fallback**: deferred from v0.1 (Chrome profile is always the auth path now).
+- **Additional services**: Apple TV, Amazon Video, Plex
+- **Tests**: `tests/` directory exists in pyproject.toml but is empty. Unit tests for `_build_fts_query`, `dedupe_videos`, `_parse_response`, and the MA JSON-LD parser would be high-value
+- **Watched-status tracking**: services don't expose this, but the user could mark it manually in the UI
+- **Rental availability cross-reference**: "what can I rent that I don't own" via JustWatch or similar
+- **GitHub Actions CI**: lint + smoke tests on push
+- **Headless login fallback**: deferred (Chrome profile is always the auth path now)
 
 ---
 
 ## Git History (recent)
 
 ```
+26970ff update STATE.md for HomeProjects merge
+ea409cc add Google Play Movies as a third source
+41254f2 move data layout back to project-local
+8a0b299 update STATE.md with v0.1.0 release-ready snapshot
 9d535ad simplify DB resolution to env var + home default
 01e5e5d make 'just clone and run' actually work
 9c9e3e4 cleanup: dead code, connection leaks, cross-platform fixes
 6ea3085 harden scrapers, browser lifecycle, and search input
 e822a78 dedup: tolerate year mismatches and missing years
 c6c4cc4 fix critical correctness issues from code review
-568241b rewrite README to explain the problem, trade-offs, and intent
-5e0c53c interactive setup, port change, poster hover zoom
-331633b search UI: pagination, clearer stats, robust login
-40b8c66 streamline UX for first-time users
-fd9426b initial scaffold
 ```
 
 ---
 
 ## Current Status
 
-**Last updated**: 2026-05-18
-**State**: Stable — v0.1.0 release-ready, repo is public on GitHub, merged with HomeProjects
+**Last updated**: 2026-07-22
+**State**: Stable — 882 unique videos in local catalog across 3 services
 **Recent changes**:
-- Merged the personal HomeProjects fork into the public StreamingCatalog: ported the Google Play Movies scraper + collector JS, relaxed the schema CHECK constraint to allow `google_play`, extended the search UI stats and source filter to three services, added a third login tab to `setup`/`login` for Google Play, migrated `household.db` to `./data/catalog.db` (859 unique videos across all three services).
-- Replaced HomeProjects launchd services with `com.streaming-catalog.{sync,search}` at `~/Library/LaunchAgents/`. Logs at `~/Library/Logs/streaming-catalog/`. Search runs on port 5858 by default, KeepAlive=true; weekly sync runs Sunday 3 AM.
-- HomeProjects folder archived to `~/Projects/HomeProjects-archived/`. No active code there.
+- Fixed "show revoked" UI: now filters TO movies with any revoked source entry, and shows a red left-border on partially-revoked rows with faded source badges
+- Fixed false revocation tracking: `purge_superseded_sources()` added to sync pipeline — removes `is_active=0` entries where the same `(video_id, source)` has an active replacement, so ID changes (Google Play changing source IDs) no longer count as revocations
+- Fixed dedup: `normalize_title()` now strips trailing `(YYYY)` year suffixes, enabling "Spider-Man (2002)" and "Spider-Man" to merge correctly
+- Catalog refreshed: 882 unique titles, 0 genuine revocations
 **Next steps**:
-- Optional: write unit tests for the parsers and dedup logic (the test directory is empty)
-- Optional: announce via the drafted LinkedIn post at `docs/linkedin-post.md`
-- When confident the merge is complete, delete `~/Projects/HomeProjects-archived/` (kept around as a safety net for now)
+- Commit and push the three changed source files
+- Optional: write unit tests for parsers and dedup logic
+- Optional: announce via `docs/linkedin-post.md`
+- Safe to delete `~/Projects/HomeProjects-archived/` when ready

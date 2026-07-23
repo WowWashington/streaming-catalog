@@ -25,6 +25,7 @@
  .quality { background: #2e7d32; color: white; }
  .type-tv { background: #ef6c00; color: white; }
  .revoked-row { opacity: 0.55; }
+ .partial-revoked-row { border-left: 3px solid #c62828; }
  .revoked-badge { background: #c62828; color: white; }
  .poster-cell { width: 60px; position: relative; }
  .poster { width: 50px; border-radius: 4px; display: block; transition: transform 0.15s ease, box-shadow 0.15s ease; transform-origin: top left; cursor: zoom-in; }
@@ -103,21 +104,28 @@
   <th>Description</th>
  </tr>
  {% for v in videos %}
- <tr class="{% if v.all_revoked %}revoked-row{% endif %}">
+ <tr class="{% if v.all_revoked %}revoked-row{% elif v.has_revoked %}partial-revoked-row{% endif %}">
    <td>{% if v.thumbnail_url %}<img src="{{ v.thumbnail_url }}" class="poster" loading="lazy">{% endif %}</td>
    <td><strong>{{ v.title }}</strong>{% if v.type == 'tv_series' %} <span class="badge type-tv">TV</span>{% endif %}{% if v.rating %} <small>[{{ v.rating }}]</small>{% endif %}</td>
    <td>{{ v.year or '' }}</td>
    <td>{% if v.quality %}<span class="badge quality">{{ v.quality }}</span>{% endif %}</td>
    <td>
      {% for s in v.sources %}
-       {% if s.source == 'vudu' %}
-       <a href="https://athome.fandango.com/content/browse/details/movie/{{ s.source_id }}" target="_blank" class="badge vudu">Vudu</a>
-       {% elif s.source == 'movies_anywhere' %}
-       <a href="https://moviesanywhere.com/movie/{{ s.source_id }}" target="_blank" class="badge ma">MA</a>
-       {% elif s.source == 'google_play' %}
-       <a href="https://play.google.com/store/movies/details?id={{ s.source_id }}" target="_blank" class="badge gp">GP</a>
+       {% if s.is_active %}
+         {% if s.source == 'vudu' %}
+         <a href="https://athome.fandango.com/content/browse/details/movie/{{ s.source_id }}" target="_blank" class="badge vudu">Vudu</a>
+         {% elif s.source == 'movies_anywhere' %}
+         <a href="https://moviesanywhere.com/movie/{{ s.source_id }}" target="_blank" class="badge ma">MA</a>
+         {% elif s.source == 'google_play' %}
+         <a href="https://play.google.com/store/movies/details?id={{ s.source_id }}" target="_blank" class="badge gp">GP</a>
+         {% endif %}
+       {% else %}
+         {% if s.source == 'vudu' %}<span class="badge vudu" style="opacity:0.5" title="Removed {{ s.removed_date }}">Vudu</span>
+         {% elif s.source == 'movies_anywhere' %}<span class="badge ma" style="opacity:0.5" title="Removed {{ s.removed_date }}">MA</span>
+         {% elif s.source == 'google_play' %}<span class="badge gp" style="opacity:0.5" title="Removed {{ s.removed_date }}">GP</span>
+         {% endif %}
+         <span class="badge revoked-badge" title="Removed {{ s.removed_date }}">revoked</span>
        {% endif %}
-       {% if not s.is_active %}<span class="badge revoked-badge" title="Removed {{ s.removed_date }}">revoked</span>{% endif %}
      {% endfor %}
    </td>
    <td><small>{{ v.first_seen or '' }}</small></td>

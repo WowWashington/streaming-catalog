@@ -13,8 +13,9 @@ log = logging.getLogger(__name__)
 
 
 def normalize_title(title: str) -> str:
-    """Lowercase, strip articles + punctuation for dedup matching."""
+    """Lowercase, strip articles, trailing year disambiguators, and punctuation for dedup matching."""
     t = title.lower().strip()
+    t = re.sub(r"\s*\(\d{4}\)\s*$", "", t)  # strip trailing "(2002)"-style year suffixes
     t = re.sub(r"^(the|a|an)\s+", "", t)
     t = re.sub(r"[^a-z0-9]+", "", t)
     return t
@@ -99,6 +100,30 @@ def dedupe_videos(conn: sqlite3.Connection) -> int:
     return merges
 
 
+def purge_superseded_sources(conn: sqlite3.Connection) -> int:
+    """
+    Delete revoked source entries that were superseded by a new source_id for
+    the same (video_id, source). This happens when a service changes a movie's
+    ID without removing it from the library — the old ID gets marked inactive
+    by mark_missing_as_removed, but a new active entry already exists.
+    Deleting these prevents spurious revocation counts.
+    """
+    cur = conn.cursor()
+    cur.execute(
+        """DELETE FROM video_sources
+           WHERE is_active=0
+             AND EXISTS (
+               SELECT 1 FROM video_sources vs2
+               WHERE vs2.video_id = video_sources.video_id
+                 AND vs2.source   = video_sources.source
+                 AND vs2.is_active = 1
+             )"""
+    )
+    count = cur.rowcount
+    conn.commit()
+    return count
+
+
 def run_sync(services: list[str] | None = None, progress_factory=None) -> dict:
     """
     Run the full sync pipeline.
@@ -152,6 +177,9 @@ def run_sync(services: list[str] | None = None, progress_factory=None) -> dict:
 
     conn = get_connection(db_path)
     merges = dedupe_videos(conn)
+    purged = purge_superseded_sources(conn)
+    if purged:
+        log.info("Purged %d superseded source entries (ID changes, not removals)", purged)
     rebuild_fts(conn)
 
     cur = conn.cursor()
